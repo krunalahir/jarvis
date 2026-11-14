@@ -1,8 +1,14 @@
 """JARVIS HTTP API.
 
-Run: uvicorn jarvis.api:app --reload
+Run locally: uvicorn jarvis.api:app --host 127.0.0.1 --reload
 
-If JARVIS_API_KEY is set, every request needs the header X-API-Key.
+Security model:
+- Set JARVIS_API_KEY: every request then needs the X-API-Key header.
+- JARVIS_ACTIONS_ENABLED=true unlocks capability only. It is not consent:
+  every send/post/call/play/publish creates a pending action that the
+  user must approve individually via POST /actions/{id}/approve.
+- Refusing to start with actions enabled but no API key is deliberate;
+  JARVIS_ALLOW_INSECURE=true overrides for local-only demos.
 """
 
 from __future__ import annotations
@@ -13,12 +19,14 @@ from typing import Optional
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+from .actions import ActionGate
 from .config import Settings
 from .connectors import build_connectors
+from .content import ContentGenerationUnavailable, ContentGenerator
 from .research import ResearchPipeline, Store, provider_from_settings
 from .research.jobs import JobRunner
 from .scheduler import PublishScheduler
-from .schemas import Platform
+from .schemas import ActionKind, Platform
 
 
 class AskRequest(BaseModel):
@@ -31,8 +39,34 @@ class DraftRequest(BaseModel):
     media_urls: list[str] = []
 
 
+class GenerateRequest(BaseModel):
+    platform: Platform
+    topic: str
+    tone: Optional[str] = None
+
+
 class ScheduleRequest(BaseModel):
     run_at: datetime
+
+
+class EmailRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    cc: list[str] = []
+
+
+class EventRequest(BaseModel):
+    summary: str
+    start_iso: str
+    end_iso: str
+    attendees: list[str] = []
+    description: str = ""
+
+
+class CallRequest(BaseModel):
+    to: str
+    say: str
 
 
 class PlayRequest(BaseModel):
@@ -45,13 +79,43 @@ def create_app(
     pipeline: Optional[ResearchPipeline] = None,
     store: Optional[Store] = None,
     connectors: Optional[dict] = None,
+    content_generator: Optional[ContentGenerator] = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
+    if settings.actions_enabled and not settings.api_key and not settings.allow_insecure:
+        raise RuntimeError(
+            "Refusing to start: JARVIS_ACTIONS_ENABLED=true without JARVIS_API_KEY. "
+            "Set an API key, or set JARVIS_ALLOW_INSECURE=true for local-only use."
+        )
     store = store or Store(settings.store_path)
     pipeline = pipeline or ResearchPipeline(provider_from_settings(settings), store)
     connectors = connectors or build_connectors(settings)
     scheduler = PublishScheduler(store, connectors)
-    jobs = JobRunner(pipeline)
+    jobs = JobRunner(pipeline, store)
+    generator = content_generator or ContentGenerator(settings)
+
+    def _publish_single(draft_id: str) -> dict:
+        draft = store.get_draft(draft_id)
+        if draft is None:
+            raise KeyError(f"unknown draft: {draft_id}")
+        from .scheduler import PUBLISHERS
+
+        connector_cls = PUBLISHERS.get(draft.platform)
+        connector = connectors.get(connector_cls.name) if connector_cls else None
+        if connector is None:
+            raise ValueError(f"no publisher for {draft.platform}")
+        return connector.publish_draft(draft)
+
+    gate = ActionGate(
+        store,
+        {
+            ActionKind.SEND_EMAIL: lambda p: connectors["gmail"].send_email(**p),
+            ActionKind.CREATE_EVENT: lambda p: connectors["google_calendar"].create_event(**p),
+            ActionKind.START_CALL: lambda p: connectors["calling"].start_call(**p),
+            ActionKind.SPOTIFY_PLAY: lambda p: connectors["spotify"].play(**p),
+            ActionKind.PUBLISH_DRAFT: lambda p: _publish_single(p["draft_id"]),
+        },
+    )
 
     app = FastAPI(title="JARVIS", version="0.1.0")
 
@@ -61,15 +125,20 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict:
-        return {"ok": True, "actions_enabled": settings.actions_enabled}
+        return {
+            "ok": True,
+            "actions_enabled": settings.actions_enabled,
+            "security_warnings": settings.security_warnings(),
+        }
+
+    # --- research ---
 
     @app.post("/research/ask", dependencies=[Depends(check_api_key)])
     def ask(request: AskRequest) -> dict:
         return pipeline.ask(request.question).model_dump(mode="json")
 
-    @app.post("/research/jobs", dependencies=[Depends(check_api_key)])
+    @app.post("/research/jobs", dependencies=[Depends(check_api_key)], status_code=202)
     def submit_job(request: AskRequest) -> dict:
-        """Submit research as a background job; poll GET /research/jobs/{id}."""
         return jobs.submit(request.question).model_dump(mode="json")
 
     @app.get("/research/jobs/{job_id}", dependencies=[Depends(check_api_key)])
@@ -90,9 +159,22 @@ def create_app(
     def list_answers(limit: int = 50) -> list[dict]:
         return [a.model_dump(mode="json") for a in store.list_answers(limit)]
 
+    # --- connectors ---
+
     @app.get("/connectors/status", dependencies=[Depends(check_api_key)])
     def connector_status() -> list[dict]:
         return [c.status() for c in connectors.values()]
+
+    # --- content ---
+
+    @app.post("/content/generate", dependencies=[Depends(check_api_key)])
+    def generate_content(request: GenerateRequest) -> dict:
+        try:
+            text = generator.generate(request.platform, request.topic, request.tone)
+        except ContentGenerationUnavailable as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        draft = scheduler.create_draft(request.platform, text)
+        return draft.model_dump(mode="json")
 
     @app.post("/content/drafts", dependencies=[Depends(check_api_key)])
     def create_draft(request: DraftRequest) -> dict:
@@ -111,11 +193,76 @@ def create_app(
     def publish_due() -> list[dict]:
         return [d.model_dump(mode="json") for d in scheduler.publish_due()]
 
-    @app.post("/spotify/play", dependencies=[Depends(check_api_key)])
-    def spotify_play(request: PlayRequest) -> dict:
+    # --- actions: every real-world effect is requested, then approved ---
+
+    @app.post("/gmail/send", dependencies=[Depends(check_api_key)], status_code=202)
+    def request_email(request: EmailRequest) -> dict:
+        action = gate.request(
+            ActionKind.SEND_EMAIL,
+            f"Send email to {request.to}: '{request.subject}'",
+            request.model_dump(),
+        )
+        return action.model_dump(mode="json")
+
+    @app.post("/calendar/events", dependencies=[Depends(check_api_key)], status_code=202)
+    def request_event(request: EventRequest) -> dict:
+        action = gate.request(
+            ActionKind.CREATE_EVENT,
+            f"Create calendar event '{request.summary}' at {request.start_iso}",
+            request.model_dump(),
+        )
+        return action.model_dump(mode="json")
+
+    @app.post("/calls", dependencies=[Depends(check_api_key)], status_code=202)
+    def request_call(request: CallRequest) -> dict:
+        action = gate.request(
+            ActionKind.START_CALL,
+            f"Call {request.to} and say: '{request.say[:80]}'",
+            request.model_dump(),
+        )
+        return action.model_dump(mode="json")
+
+    @app.post("/spotify/play", dependencies=[Depends(check_api_key)], status_code=202)
+    def request_play(request: PlayRequest) -> dict:
+        action = gate.request(
+            ActionKind.SPOTIFY_PLAY,
+            f"Play on Spotify: {request.track_query or 'resume'}",
+            request.model_dump(exclude_none=True),
+        )
+        return action.model_dump(mode="json")
+
+    @app.post("/content/drafts/{draft_id}/publish-now", dependencies=[Depends(check_api_key)], status_code=202)
+    def request_publish(draft_id: str) -> dict:
+        draft = store.get_draft(draft_id)
+        if draft is None:
+            raise HTTPException(status_code=404, detail="draft not found")
+        action = gate.request(
+            ActionKind.PUBLISH_DRAFT,
+            f"Publish {draft.platform.value} post: '{draft.text[:80]}'",
+            {"draft_id": draft_id},
+        )
+        return action.model_dump(mode="json")
+
+    @app.get("/actions", dependencies=[Depends(check_api_key)])
+    def list_actions(limit: int = 50) -> list[dict]:
+        return [a.model_dump(mode="json") for a in gate.list(limit)]
+
+    @app.post("/actions/{action_id}/approve", dependencies=[Depends(check_api_key)])
+    def approve_action(action_id: str) -> dict:
         try:
-            return connectors["spotify"].play(request.track_query, request.device_id)
-        except Exception as exc:
+            return gate.approve(action_id).model_dump(mode="json")
+        except KeyError:
+            raise HTTPException(status_code=404, detail="action not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+    @app.post("/actions/{action_id}/reject", dependencies=[Depends(check_api_key)])
+    def reject_action(action_id: str) -> dict:
+        try:
+            return gate.reject(action_id).model_dump(mode="json")
+        except KeyError:
+            raise HTTPException(status_code=404, detail="action not found")
+        except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc))
 
     return app
