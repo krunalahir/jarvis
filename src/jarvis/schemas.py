@@ -83,8 +83,40 @@ class Platform(str, Enum):
 class DraftStatus(str, Enum):
     DRAFT = "draft"
     SCHEDULED = "scheduled"
+    PUBLISHING = "publishing"  # claimed by a publisher run, not yet done
     PUBLISHED = "published"
     FAILED = "failed"
+
+
+class ActionKind(str, Enum):
+    SEND_EMAIL = "send_email"
+    CREATE_EVENT = "create_event"
+    START_CALL = "start_call"
+    PUBLISH_DRAFT = "publish_draft"
+    SPOTIFY_PLAY = "spotify_play"
+
+
+class PendingActionStatus(str, Enum):
+    PENDING = "pending"      # waiting for the user's explicit approval
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+    FAILED = "failed"        # approved but execution failed; error is kept
+
+
+class PendingAction(BaseModel):
+    """A real-world action the assistant wants to take. Nothing executes
+    until the user approves this specific action - the global
+    JARVIS_ACTIONS_ENABLED switch only gates capability, not consent."""
+
+    id: str = Field(default_factory=new_id)
+    kind: ActionKind
+    summary: str  # human-readable: "Send email to x@y.com: 'Subject'"
+    payload: dict = Field(default_factory=dict)
+    status: PendingActionStatus = PendingActionStatus.PENDING
+    result: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    decided_at: Optional[datetime] = None
 
 
 class PostDraft(BaseModel):
