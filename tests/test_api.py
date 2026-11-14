@@ -29,7 +29,9 @@ def client():
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"ok": True, "actions_enabled": False}
+    body = client.get("/health").json()
+    assert body["ok"] is True
+    assert body["actions_enabled"] is False
 
 
 def test_ask_and_fetch_answer(client):
@@ -80,3 +82,49 @@ def test_api_key_enforced_when_set():
     assert c.post("/research/ask", json={"question": "q"}).status_code == 401
     ok = c.post("/research/ask", json={"question": "q"}, headers={"X-API-Key": "secret"})
     assert ok.status_code == 200
+
+
+def test_actions_enabled_without_api_key_refuses_to_start():
+    with pytest.raises(RuntimeError, match="JARVIS_API_KEY"):
+        create_app(
+            settings=Settings(actions_enabled=True),
+            store=Store(":memory:"),
+        )
+
+
+def test_every_effect_is_pending_until_approved(client):
+    # Requesting a send does NOT send: it creates a pending action.
+    response = client.post(
+        "/gmail/send",
+        json={"to": "a@b.com", "subject": "Hi", "body": "hello"},
+    )
+    assert response.status_code == 202
+    action = response.json()
+    assert action["status"] == "pending"
+    assert "a@b.com" in action["summary"]
+
+    # Approving executes; here Gmail is not configured, so it fails visibly.
+    decided = client.post(f"/actions/{action['id']}/approve").json()
+    assert decided["status"] == "failed"
+    assert "missing settings" in decided["error"]
+
+    # A decided action cannot be re-approved or rejected.
+    assert client.post(f"/actions/{action['id']}/approve").status_code == 409
+    assert client.post(f"/actions/{action['id']}/reject").status_code == 409
+
+
+def test_reject_blocks_execution(client):
+    action = client.post(
+        "/spotify/play", json={"track_query": "song"}
+    ).json()
+    decided = client.post(f"/actions/{action['id']}/reject").json()
+    assert decided["status"] == "rejected"
+    assert client.post(f"/actions/{action['id']}/approve").status_code == 409
+
+
+def test_content_generate_unavailable_without_key(client):
+    response = client.post(
+        "/content/generate", json={"platform": "x", "topic": "launch day"}
+    )
+    assert response.status_code == 409
+    assert "OPENAI_API_KEY" in response.json()["detail"]
