@@ -32,7 +32,7 @@ def test_no_sources_marks_uncertain(store):
     pipeline = ResearchPipeline(StaticProvider(default=result), store)
     answer = pipeline.ask("anything")
     assert answer.status == AnswerStatus.UNCERTAIN
-    assert "no sources" in answer.detail
+    assert "no usable sources" in answer.detail
 
 
 def test_unsupported_claims_are_surfaced_not_dropped(store):
