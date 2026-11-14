@@ -96,7 +96,7 @@ def test_background_job_completes():
         ),
         store,
     )
-    runner = JobRunner(pipeline)
+    runner = JobRunner(pipeline, store)
     job = runner.submit("test question")
     # wait for the worker thread
     runner._pool.shutdown(wait=True)
