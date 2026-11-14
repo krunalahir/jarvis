@@ -48,6 +48,11 @@ class Settings:
 
     spotify_access_token: Optional[str] = None
 
+    # Escape hatch for running with actions enabled and no API key
+    # (local-only demos). Never set this when the API is reachable by
+    # anyone else.
+    allow_insecure: bool = False
+
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
@@ -65,7 +70,20 @@ class Settings:
             instagram_business_account_id=_env("INSTAGRAM_BUSINESS_ACCOUNT_ID"),
             x_bearer_token=_env("X_BEARER_TOKEN"),
             spotify_access_token=_env("SPOTIFY_ACCESS_TOKEN"),
+            allow_insecure=_flag("JARVIS_ALLOW_INSECURE"),
         )
+
+    def security_warnings(self) -> list[str]:
+        warnings = []
+        if self.actions_enabled and not self.api_key:
+            warnings.append(
+                "JARVIS_ACTIONS_ENABLED is true but JARVIS_API_KEY is unset: "
+                "anyone who can reach the API could request actions. Set an "
+                "API key, or bind to 127.0.0.1 and set JARVIS_ALLOW_INSECURE=true."
+            )
+        if not self.api_key:
+            warnings.append("JARVIS_API_KEY is unset: the HTTP API is unauthenticated.")
+        return warnings
 
     def has_all(self, *names: str) -> bool:
         return all(getattr(self, name) for name in names)
