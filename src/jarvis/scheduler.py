@@ -45,11 +45,17 @@ class PublishScheduler:
         return draft
 
     def publish_due(self) -> list[PostDraft]:
-        """Publish every scheduled draft whose time has passed. Returns the
-        drafts it touched, with status PUBLISHED or FAILED on each."""
+        """Publish every scheduled draft whose time has passed. Claims drafts
+        atomically first, so overlapping runs can never post the same draft
+        twice. Returns the drafts it touched, PUBLISHED or FAILED on each."""
         now = utcnow().isoformat()
         touched = []
-        for draft in self.store.due_drafts(now):
+        for draft in self.store.claim_due_drafts(now):
+            if draft.platform_post_id:
+                # Already has a platform id: never post it again.
+                draft.status = DraftStatus.PUBLISHED
+                self.store.save_draft(draft)
+                continue
             connector_cls = PUBLISHERS.get(draft.platform)
             connector = self.connectors.get(connector_cls.name) if connector_cls else None
             try:
