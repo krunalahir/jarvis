@@ -51,13 +51,26 @@ class ResearchPipeline:
             self.store.save_answer(answer)
             return answer
 
+        # Citation validation: a source must be a real URL, and every claim's
+        # source indexes must point at a source that actually exists. Bad
+        # citations demote the claim to unsupported - links are never treated
+        # as evidence just because they were attached.
+        sources, remap = [], {}
+        for old_index, source in enumerate(result.sources):
+            if source.url and source.url.startswith(("http://", "https://")):
+                remap[old_index] = len(sources)
+                sources.append(source)
+
         supported, unsupported = [], []
         for claim in result.claims:
+            claim.source_indexes = sorted(
+                {remap[i] for i in claim.source_indexes if i in remap}
+            )
             (supported if claim.source_indexes else unsupported).append(claim)
 
-        if not result.sources:
+        if not sources:
             status = AnswerStatus.UNCERTAIN
-            detail = "The provider returned no sources, so this answer cannot be verified."
+            detail = "The provider returned no usable sources, so this answer cannot be verified."
         elif unsupported:
             status = AnswerStatus.UNCERTAIN
             detail = "Some statements have no supporting source and are listed separately."
@@ -70,7 +83,7 @@ class ResearchPipeline:
             status=status,
             summary=result.summary,
             claims=supported,
-            sources=result.sources,
+            sources=sources,
             unsupported_claims=[c.text for c in unsupported],
             detail=detail,
         )
