@@ -18,7 +18,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 cp .env.example .env   # fill in what you have; everything is optional to start
 pytest                 # run the test suite (no credentials needed)
-uvicorn jarvis.api:app --reload
+uvicorn jarvis.api:app --host 127.0.0.1 --reload
 ```
 
 API docs: http://localhost:8000/docs
@@ -27,8 +27,9 @@ API docs: http://localhost:8000/docs
 
 | Feature | Status | What works today |
 |---|---|---|
-| Research & Q&A | Working, tested | Ask a question (sync or as a background job), get a source-backed answer, saved results. Needs one search provider key (OpenAI, Perplexity or Exa). |
-| Gmail / Google Calendar | Coded, needs Google OAuth | Read mail and list events (read-only), send mail, create events. Writes stay disabled until a Google access token is configured and actions are enabled. |
+| Research & Q&A | Working, tested | Ask a question (sync or as a durable background job), get a source-backed answer, saved results. Needs one search provider key (OpenAI, Perplexity or Exa). |
+| Content creation | Working, tested | Topic -> post draft via OpenAI, per platform. Never publishes. |
+| Gmail / Google Calendar | Coded, needs Google OAuth | Read mail and list events (read-only), send mail, create events. Writes go through per-action approval. |
 | Phone calls | Coded, needs Twilio | Start an outbound call via Twilio Voice. Same gating. |
 | Instagram | Coded, needs Meta app | Photo/Reel publishing containers for professional accounts. |
 | X (Twitter) | Coded, needs paid X API | Post creation. X has no permanent free tier (pay-per-use). |
@@ -40,29 +41,55 @@ Per-platform credentials, scopes and limits: [docs/integrations.md](docs/integra
 
 ## Safety model
 
-Two switches gate every real-world action:
+Three layers gate every real-world action:
 
-1. `JARVIS_ACTIONS_ENABLED=true` - master switch, off by default.
+1. `JARVIS_ACTIONS_ENABLED=true` - capability switch, off by default. This
+   is NOT consent.
 2. Per-platform credentials - a connector with no credentials reports
    `not_configured` and refuses to act.
+3. Per-action approval - every send, post, call, play or publish becomes a
+   pending action and executes only after you approve that specific action
+   (`POST /actions/{id}/approve`). Scheduling a post is itself the approval
+   for that post: drafts publish at their scheduled time and cannot be
+   posted twice (drafts are claimed atomically before publishing).
 
-Read operations (like checking status) only need the platform credential.
-Write operations (send, post, call, play, publish) need both switches.
-Tests never touch the network.
+Read operations (search mail, list events, status) only need the platform
+credential. Tests never touch the network.
+
+## Running the API
+
+Bind locally unless you add real authentication:
+
+```bash
+uvicorn jarvis.api:app --host 127.0.0.1 --reload
+```
+
+Set `JARVIS_API_KEY` to require an `X-API-Key` header on every request.
+The app refuses to start with actions enabled and no API key unless
+`JARVIS_ALLOW_INSECURE=true` (local demos only). Single-user, single-store:
+there is no multi-tenant isolation.
 
 ## HTTP surface
 
 ```
 POST /research/ask            question -> answer (synchronous)
-POST /research/jobs           question -> background job (deep research can take minutes)
+POST /research/jobs           question -> background job (durable, requeued after restart)
 GET  /research/jobs/{id}      poll job status -> answer_id
 GET  /research/{id}           fetch a saved answer
 GET  /research                recent answers
 GET  /connectors/status       per-platform readiness
+POST /content/generate        topic -> post draft via LLM (never publishes)
 POST /content/drafts          create a social post draft (never publishes)
 POST /content/drafts/{id}/schedule
 POST /content/publish-due     publish everything due (run on a cron)
-POST /spotify/play            start playback
+POST /gmail/send              request an email send -> pending action
+POST /calendar/events         request an event -> pending action
+POST /calls                   request a call -> pending action
+POST /spotify/play            request playback -> pending action
+POST /content/drafts/{id}/publish-now -> pending action
+GET  /actions                 list pending/decided actions
+POST /actions/{id}/approve    execute one specific action
+POST /actions/{id}/reject     block it
 ```
 
 ## Layout
@@ -73,7 +100,9 @@ src/jarvis/
   schemas.py            shared pydantic models
   research/             question -> research job -> sourced answer -> store
   connectors/           one module per platform family, all gated
-  scheduler.py          scheduled publishing queue (SQLite)
+  actions.py            per-action approval gate
+  content.py            LLM-backed post draft generation
+  scheduler.py          scheduled publishing queue (SQLite, atomic claims)
   api.py                FastAPI surface
 tests/                  offline test suite
 docs/integrations.md    per-platform setup, scopes and limits
