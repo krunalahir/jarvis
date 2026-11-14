@@ -1,0 +1,74 @@
+"""Configuration and credential gating for JARVIS.
+
+Everything comes from the environment. No secrets are stored in the
+repository; see .env.example for the full list.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import Optional
+
+
+def _env(name: str) -> Optional[str]:
+    value = os.environ.get(name, "").strip()
+    return value or None
+
+
+def _flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass
+class Settings:
+    """Runtime settings. Read with Settings.from_env()."""
+
+    actions_enabled: bool = False
+    api_key: Optional[str] = None
+    store_path: str = "jarvis_store.sqlite3"
+
+    openai_api_key: Optional[str] = None
+    perplexity_api_key: Optional[str] = None
+    exa_api_key: Optional[str] = None
+
+    google_access_token: Optional[str] = None
+
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_from_number: Optional[str] = None
+
+    meta_access_token: Optional[str] = None
+    instagram_business_account_id: Optional[str] = None
+
+    x_bearer_token: Optional[str] = None
+
+    spotify_access_token: Optional[str] = None
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        return cls(
+            actions_enabled=_flag("JARVIS_ACTIONS_ENABLED"),
+            api_key=_env("JARVIS_API_KEY"),
+            store_path=os.environ.get("JARVIS_STORE_PATH", "jarvis_store.sqlite3"),
+            openai_api_key=_env("OPENAI_API_KEY"),
+            perplexity_api_key=_env("PERPLEXITY_API_KEY"),
+            exa_api_key=_env("EXA_API_KEY"),
+            google_access_token=_env("GOOGLE_ACCESS_TOKEN"),
+            twilio_account_sid=_env("TWILIO_ACCOUNT_SID"),
+            twilio_auth_token=_env("TWILIO_AUTH_TOKEN"),
+            twilio_from_number=_env("TWILIO_FROM_NUMBER"),
+            meta_access_token=_env("META_ACCESS_TOKEN"),
+            instagram_business_account_id=_env("INSTAGRAM_BUSINESS_ACCOUNT_ID"),
+            x_bearer_token=_env("X_BEARER_TOKEN"),
+            spotify_access_token=_env("SPOTIFY_ACCESS_TOKEN"),
+        )
+
+    def has_all(self, *names: str) -> bool:
+        return all(getattr(self, name) for name in names)
+
+    def missing(self, *names: str) -> list[str]:
+        return [name for name in names if not getattr(self, name)]
