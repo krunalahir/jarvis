@@ -10,7 +10,9 @@ Single-user Python backend (FastAPI), local-first:
 user / chat client
       |
       v
-FastAPI HTTP API (api.py) --------------- X-API-Key on every route except /health
+FastAPI HTTP API (api.py) --------------- X-API-Key required on every route
+      except /health when JARVIS_API_KEY is set; the app refuses to start
+      with actions enabled and no key (unless JARVIS_ALLOW_INSECURE=true)
       |
       +--> Agent loop (agent/graph.py, agent/tools.py)
       |      LangChain create_agent over LangGraph. The model plans,
@@ -44,6 +46,9 @@ FastAPI HTTP API (api.py) --------------- X-API-Key on every route except /healt
       |      Twilio calling, Instagram (Meta), X, Spotify. Each is inert
       |      until its credentials exist AND JARVIS_ACTIONS_ENABLED=true.
       |      Snapchat is a scaffold that fails loudly (partner API only).
+      |      YouTube draft publishing downloads the draft's media URL;
+      |      that fetch is hardened: http(s) only, host must resolve to a
+      |      public IP (SSRF guard), redirects re-validated, 200 MB cap.
       |
       +--> Store (research/store.py)
              SQLite: answers, drafts, jobs, actions. One store-wide lock,
@@ -79,7 +84,7 @@ JARVIS_ALLOW_INSECURE=true (local demos only).
 
 ## Testing
 
-105 offline tests, all passing (docs/testing.md). Everything external is
+111 offline tests, all passing (docs/testing.md). Everything external is
 mocked; they verify code behavior, not live inference or live platform
 calls.
 
