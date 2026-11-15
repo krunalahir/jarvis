@@ -40,3 +40,4 @@ Each line below is one distinct test executed on its own
 execution and before the next one, in the order shown. All times IST,
 November 16, 2026. Run against the working copy that matches `main`
 (trailing newline aside), after the media-download hardening commits.
+- 01:08 IST - PASS (1.54s) - `tests/test_regressions.py::test_concurrent_approvals_execute_once`
