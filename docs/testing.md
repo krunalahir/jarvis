@@ -92,11 +92,13 @@ not fully excluded; the residual risk is documented in the code. Tests:
 `test_media_url_allowlist_blocks_unlisted_host`,
 `test_media_url_allowlist_permits_listed_host_and_subdomain`.
 
-An optional fail-closed mode exists: set `JARVIS_MEDIA_URL_ALLOWLIST` to a
+An optional allowlist mode exists: set `JARVIS_MEDIA_URL_ALLOWLIST` to a
 comma-separated host list and only those hosts (exact or subdomain) can be
-fetched at all. Without it, any public http(s) URL passes validation, which
-still carries the documented DNS-rebinding residual - set the allowlist for
-any deployment beyond local use.
+fetched. The default (unset) allows any public http(s) URL after validation
+- it does not block all hosts. Neither mode is a complete DNS-rebinding
+fix: the validator and the HTTP client resolve DNS separately, and
+subdomain matching widens the allowlist surface. Set the allowlist for any
+deployment beyond local use.
 
 ## What these tests prove, and what they cannot
 
