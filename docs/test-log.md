@@ -88,3 +88,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:23 IST - PASS (1.47s) - `tests/test_features.py::test_request_tools_queue_every_write_kind`
 - 01:23 IST - PASS (1.29s) - `tests/test_features.py::test_draft_post_tool_rejects_unknown_platform`
 - 01:23 IST - PASS (1.41s) - `tests/test_features.py::test_draft_post_tool_saves_draft_without_publishing`
+- 01:24 IST - PASS (1.33s) - `tests/test_features.py::test_connector_status_tool_lists_every_connector`
