@@ -20,9 +20,11 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from .actions import ActionGate
+from .agent import build_agent, build_tools, run_agent
 from .config import Settings
 from .connectors import build_connectors
 from .content import ContentGenerationUnavailable, ContentGenerator
+from .llm import describe_llm
 from .research import ResearchPipeline, Store, provider_from_settings
 from .research.jobs import JobRunner
 from .scheduler import PublishScheduler
@@ -74,12 +76,19 @@ class PlayRequest(BaseModel):
     device_id: Optional[str] = None
 
 
+class AgentChatRequest(BaseModel):
+    message: str
+    # Optional prior turns as {"role": "user"|"assistant", "content": str}.
+    history: list[dict] = []
+
+
 def create_app(
     settings: Optional[Settings] = None,
     pipeline: Optional[ResearchPipeline] = None,
     store: Optional[Store] = None,
     connectors: Optional[dict] = None,
     content_generator: Optional[ContentGenerator] = None,
+    agent_builder=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     if settings.actions_enabled and not settings.api_key and not settings.allow_insecure:
@@ -128,8 +137,35 @@ def create_app(
         return {
             "ok": True,
             "actions_enabled": settings.actions_enabled,
+            "llm": describe_llm(settings),
             "security_warnings": settings.security_warnings(),
         }
+
+    # --- agent: the LangGraph plan/tool/observe loop ---
+
+    @app.post("/agent/chat", dependencies=[Depends(check_api_key)])
+    def agent_chat(request: AgentChatRequest) -> dict:
+        # Tools and the pending-action list are built per request, so one
+        # chat turn can never see or claim another turn's queued actions.
+        pending: list = []
+        tools = build_tools(
+            settings,
+            pipeline,
+            gate,
+            scheduler,
+            generator,
+            connectors,
+            pending_action_ids=pending,
+        )
+        builder = agent_builder or (lambda tool_list: build_agent(settings, tool_list))
+        reply = run_agent(
+            builder(tools),
+            request.message,
+            max_steps=settings.agent_max_steps,
+            history=request.history,
+            pending_action_ids=pending,
+        )
+        return reply.model_dump(mode="json")
 
     # --- research ---
 
