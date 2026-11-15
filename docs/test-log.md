@@ -54,3 +54,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:11 IST - PASS (1.25s) - `tests/test_regressions.py::test_media_url_rejects_private_and_metadata_ips`
 - 01:11 IST - PASS (1.28s) - `tests/test_regressions.py::test_media_url_rejects_unresolvable_host`
 - 01:12 IST - PASS (1.27s) - `tests/test_regressions.py::test_youtube_download_rejects_redirect_to_metadata_endpoint`
+- 01:12 IST - PASS (1.21s) - `tests/test_regressions.py::test_youtube_download_enforces_size_cap_and_cleans_up`
