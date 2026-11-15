@@ -19,3 +19,7 @@ per-test commits.
 - 00:57 - Per-area runs on the fresh checkout, review-fix checks:
   `tests/test_regressions.py` 15 passed in 1.41s; `tests/test_features.py`
   32 passed in 0.99s.
+- 00:57 - Core safety areas: `tests/test_actions.py` 8 passed in 0.53s
+  (approval gate, jobs, citations); `tests/test_agent.py` 5 passed in
+  0.72s (agent loop bounds, write tools only queue);
+  `tests/test_api.py` 10 passed in 0.96s (HTTP surface, API key).
