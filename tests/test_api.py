@@ -122,9 +122,51 @@ def test_reject_blocks_execution(client):
     assert client.post(f"/actions/{action['id']}/approve").status_code == 409
 
 
-def test_content_generate_unavailable_without_key(client):
-    response = client.post(
+def test_content_generate_unavailable_without_key():
+    # Hosted OpenAI is opt-in; without its key, generation is a clean 409.
+    app = create_app(
+        settings=Settings(actions_enabled=False, llm_provider="openai"),
+        store=Store(":memory:"),
+    )
+    response = TestClient(app).post(
         "/content/generate", json={"platform": "x", "topic": "launch day"}
     )
     assert response.status_code == 409
     assert "OPENAI_API_KEY" in response.json()["detail"]
+
+
+def test_agent_chat_endpoint_runs_loop_and_reports_pending_actions():
+    from langchain_core.messages import AIMessage, ToolCall
+
+    from jarvis.agent import build_agent
+
+    from fakes import ScriptedChatModel
+
+    store = Store(":memory:")
+    script = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                ToolCall(
+                    name="request_spotify_play",
+                    args={"track_query": "hanuman chalisa"},
+                    id="t1",
+                )
+            ],
+        ),
+        AIMessage(content="Queued for your approval; nothing is playing yet."),
+    ]
+    model = ScriptedChatModel(script=script)
+    app = create_app(
+        settings=Settings(actions_enabled=False),
+        store=store,
+        agent_builder=lambda tools: build_agent(Settings(), tools, model=model),
+    )
+    response = TestClient(app).post("/agent/chat", json={"message": "play hanuman chalisa"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "answered"
+    assert body["steps"][0]["tool"] == "request_spotify_play"
+    assert len(body["pending_action_ids"]) == 1
+    action = store.get_action(body["pending_action_ids"][0])
+    assert action.status.value == "pending"  # still waiting for the user
