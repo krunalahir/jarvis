@@ -94,3 +94,8 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:24 IST - PASS (1.29s) - `tests/test_features.py::test_every_write_endpoint_requires_api_key_when_set`
 - 01:25 IST - PASS (1.23s) - `tests/test_features.py::test_actions_enabled_without_key_refused_even_with_allow_insecure_unset`
 - 01:25 IST - PASS (1.24s) - `tests/test_api.py::test_health`
+- 01:25 IST - PASS (1.35s) - `tests/test_api.py::test_api_key_enforced_when_set`
+- 01:25 IST - PASS (1.83s) - full suite after run 55: `pytest` - 113 passed
+  (55 individual runs above + the remaining suite; the 113 total includes
+  the 55 individually logged tests, the rest of test_api.py and the other
+  pre-existing files).
