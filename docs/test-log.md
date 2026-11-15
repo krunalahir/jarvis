@@ -78,3 +78,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:18 IST - PASS (1.53s) - `tests/test_features.py::test_gmail_html_only_message_falls_back_to_snippet`
 - 01:18 IST - PASS (1.24s) - `tests/test_features.py::test_gmail_read_messages_empty_search`
 - 01:18 IST - PASS (1.30s) - `tests/test_features.py::test_calendar_create_event_builds_payload`
+- 01:19 IST - PASS (1.28s) - `tests/test_features.py::test_calendar_create_event_refused_when_actions_disabled`
