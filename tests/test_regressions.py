@@ -7,6 +7,9 @@ Nothing here touches the network.
 """
 
 import base64
+import os
+import socket
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -21,7 +24,7 @@ from jarvis.api import create_app
 from jarvis.config import Settings
 from jarvis.connectors.calling import TwilioCallingConnector
 from jarvis.connectors.google_workspace import GmailConnector
-from jarvis.connectors.social import YouTubeConnector
+from jarvis.connectors.social import YouTubeConnector, validate_media_url
 from jarvis.recovery import UNKNOWN_OUTCOME, recover_interrupted_state
 from jarvis.research import ResearchPipeline, StaticProvider, Store
 from jarvis.research.providers import ProviderResult
@@ -284,7 +287,15 @@ def test_gmail_read_messages_fetches_bodies():
 # --- 3. YouTube: publishing a draft works from its media URL ---
 
 
-def test_youtube_publish_downloads_video_from_draft_media_url():
+def _public_dns(monkeypatch):
+    """Stub DNS so hermetic tests pass URL validation with public IPs."""
+    monkeypatch.setattr(
+        "jarvis.connectors.social._resolve_host_ips", lambda host: ["93.184.216.34"]
+    )
+
+
+def test_youtube_publish_downloads_video_from_draft_media_url(monkeypatch):
+    _public_dns(monkeypatch)
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -314,7 +325,8 @@ def test_youtube_publish_without_video_source_fails_loudly():
         yt.publish_draft(draft)
 
 
-def test_youtube_scheduled_draft_sets_native_publish_at():
+def test_youtube_scheduled_draft_sets_native_publish_at(monkeypatch):
+    _public_dns(monkeypatch)
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -333,6 +345,98 @@ def test_youtube_scheduled_draft_sets_native_publish_at():
     )
     yt.publish_draft(draft)
     assert b"2026-11-20T12:00:00.000Z" in seen["body"]
+
+
+# --- 5b. Media download hardening: arbitrary draft URLs are untrusted ---
+
+
+def test_media_url_rejects_non_http_schemes():
+    for url in ("file:///etc/passwd", "ftp://example.com/v.mp4", "gopher://x"):
+        with pytest.raises(ValueError, match="http"):
+            validate_media_url(url)
+
+
+def test_media_url_rejects_private_and_metadata_ips(monkeypatch):
+    for ip in ("169.254.169.254", "127.0.0.1", "10.0.0.5", "192.168.1.1", "::1"):
+        monkeypatch.setattr(
+            "jarvis.connectors.social._resolve_host_ips", lambda host, ip=ip: [ip]
+        )
+        with pytest.raises(ValueError, match="non-public"):
+            validate_media_url("https://internal.example/secret")
+
+
+def test_media_url_rejects_unresolvable_host(monkeypatch):
+    def boom(host):
+        raise socket.gaierror("no such host")
+
+    monkeypatch.setattr("jarvis.connectors.social._resolve_host_ips", boom)
+    with pytest.raises(ValueError, match="does not resolve"):
+        validate_media_url("https://nonexistent.invalid/v.mp4")
+
+
+def test_youtube_download_rejects_redirect_to_metadata_endpoint(monkeypatch):
+    def dns(host):
+        # the public CDN resolves publicly; the redirect target is link-local
+        return {"cdn.example.com": ["93.184.216.34"], "169.254.169.254": ["169.254.169.254"]}[host]
+
+    monkeypatch.setattr("jarvis.connectors.social._resolve_host_ips", dns)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302, headers={"location": "http://169.254.169.254/latest/meta-data"}
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    yt = YouTubeConnector(settings(google_access_token="tok", actions_enabled=True), client=client)
+    draft = PostDraft(
+        platform=Platform.YOUTUBE,
+        text="clip",
+        media_urls=["https://cdn.example.com/clip.mp4"],
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        yt.publish_draft(draft)
+
+
+def test_youtube_download_enforces_size_cap_and_cleans_up(monkeypatch, tmp_path):
+    _public_dns(monkeypatch)
+    monkeypatch.setattr("jarvis.connectors.social.MAX_MEDIA_BYTES", 8)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * 64)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    yt = YouTubeConnector(settings(google_access_token="tok", actions_enabled=True), client=client)
+    draft = PostDraft(
+        platform=Platform.YOUTUBE,
+        text="clip",
+        media_urls=["https://cdn.example.com/big.mp4"],
+    )
+    before = set(os.listdir(tempfile.gettempdir()))
+    with pytest.raises(ValueError, match="limit"):
+        yt.publish_draft(draft)
+    assert set(os.listdir(tempfile.gettempdir())) == before  # partial download removed
+
+
+def test_youtube_download_follows_valid_redirect(monkeypatch):
+    _public_dns(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cdn.example.com":
+            return httpx.Response(
+                302, headers={"location": "https://cdn2.example.com/clip.mp4"}
+            )
+        if request.url.host == "cdn2.example.com":
+            return httpx.Response(200, content=b"video")
+        return httpx.Response(200, json={"id": "yt-redir"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    yt = YouTubeConnector(settings(google_access_token="tok", actions_enabled=True), client=client)
+    draft = PostDraft(
+        platform=Platform.YOUTUBE,
+        text="clip",
+        media_urls=["https://cdn.example.com/clip.mp4"],
+    )
+    assert yt.publish_draft(draft)["id"] == "yt-redir"
 
 
 # --- 6. TwiML: spoken text is XML-escaped ---
