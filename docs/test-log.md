@@ -66,3 +66,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:15 IST - PASS (1.24s) - `tests/test_features.py::test_failed_draft_is_not_retried_by_publish_due`
 - 01:15 IST - PASS (1.39s) - `tests/test_features.py::test_draft_with_platform_post_id_is_never_reposted`
 - 01:15 IST - PASS (1.21s) - `tests/test_features.py::test_youtube_draft_publishes_end_to_end_through_scheduler`
+- 01:15 IST - PASS (1.24s) - `tests/test_features.py::test_approve_unknown_action_returns_404`
