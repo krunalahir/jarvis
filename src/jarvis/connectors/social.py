@@ -45,15 +45,19 @@ def _resolve_host_ips(host: str) -> list[str]:
     return [info[4][0] for info in infos]
 
 
-def validate_media_url(url: str) -> None:
+def validate_media_url(url: str, allowlist: tuple[str, ...] = ()) -> None:
     """Reject media URLs that are not plain public http(s).
 
     Blocks file:/ftp: schemes, hostnames that do not resolve, and any host
     resolving to a loopback/private/link-local/reserved address (cloud
-    metadata endpoints, internal services). Note: DNS is re-resolved by the
-    HTTP client at connect time, so a hostile DNS rebinding attack is not
-    fully excluded here; the remaining exposure is accepted for user-supplied
-    draft media, and the bytes cap limits the blast radius.
+    metadata endpoints, internal services). When `allowlist` is non-empty,
+    only those hosts (exact match or subdomain) are fetched at all - the
+    fail-closed deployment option.
+
+    Residual risk: DNS is re-resolved by the HTTP client at connect time,
+    so a hostile DNS rebinding attack is not fully excluded by the resolve
+    check. Set the allowlist (JARVIS_MEDIA_URL_ALLOWLIST) for any deployment
+    beyond local use; the bytes cap limits the blast radius either way.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -61,6 +65,10 @@ def validate_media_url(url: str) -> None:
     host = parsed.hostname
     if not host:
         raise ValueError("media URL has no host")
+    if allowlist and not any(
+        host == allowed or host.endswith("." + allowed) for allowed in allowlist
+    ):
+        raise ValueError(f"media URL host {host} is not in JARVIS_MEDIA_URL_ALLOWLIST")
     try:
         ips = _resolve_host_ips(host)
     except socket.gaierror as exc:
@@ -196,7 +204,7 @@ class YouTubeConnector(Connector):
         tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
         try:
             for _ in range(MAX_MEDIA_REDIRECTS + 1):
-                validate_media_url(current)
+                validate_media_url(current, self.settings.media_url_allowlist)
                 with self._client.stream("GET", current) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
