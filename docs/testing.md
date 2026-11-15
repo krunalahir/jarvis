@@ -1,6 +1,6 @@
 # Testing
 
-Last full run: **111 passed** (5 consecutive full-suite runs of the first 105, then the expanded suite after the media-download hardening below),
+Last full run: **113 passed** (5 consecutive full-suite runs of the first 105, then the expanded suite after the media-download hardening below),
 November 16, 2026. Run it yourself with `pytest` - no credentials, no
 network, no model server needed. DNS is stubbed in the media-download
 tests so they stay hermetic.
@@ -19,7 +19,7 @@ happened) is in docs/test-log.md.
 | tests/test_llm.py | 4 | Local default, OpenAI opt-in gating, unreachable-server errors |
 | tests/test_local_research.py | 5 | Local provider: search-key requirement, synthesis only from sources |
 | tests/test_providers.py | 6 | Provider mapping, HTTP failure handling, scheduler success path |
-| tests/test_regressions.py | 21 | The Nov 2026 review findings (below) + media-download hardening |
+| tests/test_regressions.py | 23 | The Nov 2026 review findings (below) + media-download hardening |
 | tests/test_research.py | 6 | Research pipeline, unsupported claims surfaced |
 
 ## What the November 2026 review found, and the fix + test for each
@@ -88,7 +88,15 @@ not fully excluded; the residual risk is documented in the code. Tests:
 `test_media_url_rejects_unresolvable_host`,
 `test_youtube_download_rejects_redirect_to_metadata_endpoint`,
 `test_youtube_download_enforces_size_cap_and_cleans_up`,
-`test_youtube_download_follows_valid_redirect`.
+`test_youtube_download_follows_valid_redirect`,
+`test_media_url_allowlist_blocks_unlisted_host`,
+`test_media_url_allowlist_permits_listed_host_and_subdomain`.
+
+An optional fail-closed mode exists: set `JARVIS_MEDIA_URL_ALLOWLIST` to a
+comma-separated host list and only those hosts (exact or subdomain) can be
+fetched at all. Without it, any public http(s) URL passes validation, which
+still carries the documented DNS-rebinding residual - set the allowlist for
+any deployment beyond local use.
 
 ## What these tests prove, and what they cannot
 
