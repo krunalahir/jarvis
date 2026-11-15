@@ -80,3 +80,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:18 IST - PASS (1.30s) - `tests/test_features.py::test_calendar_create_event_builds_payload`
 - 01:19 IST - PASS (1.28s) - `tests/test_features.py::test_calendar_create_event_refused_when_actions_disabled`
 - 01:19 IST - PASS (1.23s) - `tests/test_features.py::test_instagram_video_url_creates_reels_container`
+- 01:19 IST - PASS (1.43s) - `tests/test_features.py::test_x_publish_refused_when_actions_disabled`
