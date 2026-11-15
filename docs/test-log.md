@@ -64,3 +64,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:14 IST - PASS (1.32s) - `tests/test_features.py::test_schedule_naive_datetime_is_treated_as_utc`
 - 01:14 IST - PASS (1.24s) - `tests/test_features.py::test_schedule_unknown_draft_raises`
 - 01:15 IST - PASS (1.24s) - `tests/test_features.py::test_failed_draft_is_not_retried_by_publish_due`
+- 01:15 IST - PASS (1.39s) - `tests/test_features.py::test_draft_with_platform_post_id_is_never_reposted`
