@@ -6,10 +6,17 @@ JARVIS answers questions with source-backed research, then acts through
 connected apps: Google mail and calendar, phone calls, social content
 creation with scheduled publishing, and Spotify playback.
 
-This repository is the base version. The research/Q&A core runs and is
-tested offline. App connectors are real API client code, but each one
-stays inert until you supply that platform's credentials and explicitly
-enable actions. Nothing here posts, sends, calls or plays without that.
+The brain is a self-hosted [Qwen3 8B](https://huggingface.co/Qwen/Qwen3-8B)
+running on your own machine (free, Apache 2.0; no per-message cost), wired
+through LangChain and a LangGraph agent loop: the model plans, calls a
+tool, reads the result and decides the next step. Web search stays a
+separate tool so fresh facts come from real sources, not model memory.
+
+This repository is the base version. The research/Q&A core and the agent
+loop run and are tested offline. App connectors are real API client code,
+but each one stays inert until you supply that platform's credentials and
+explicitly enable actions. Nothing here posts, sends, calls or plays
+without that.
 
 ## Quick start
 
@@ -21,14 +28,36 @@ pytest                 # run the test suite (no credentials needed)
 uvicorn jarvis.api:app --host 127.0.0.1 --reload
 ```
 
+To make the model live, start a local Qwen3 8B server (LM Studio, Ollama,
+mlx-lm or vLLM) and point `.env` at it - see
+[docs/local-model.md](docs/local-model.md). Without it the API still runs;
+model-backed features report clearly that the server is unreachable.
+
 API docs: http://localhost:8000/docs
+
+## The agent loop
+
+`POST /agent/chat` runs the LangGraph agent (LangChain 1.0 `create_agent`):
+
+1. **Plan** - the model reads your request and decides the next step.
+2. **Act** - it calls one tool: web search, research, a Gmail/Calendar
+   read, a post draft, or an action request.
+3. **Observe** - the tool result goes back into the conversation.
+4. **Decide** - call another tool or answer.
+
+The loop is bounded (`JARVIS_AGENT_MAX_STEPS`, default 8) and reports
+`stopped_step_limit` instead of ever running away. Writes are never
+executed by the agent: its `request_*` tools create the same pending
+actions as the HTTP endpoints, and each one still needs your explicit
+approval via `POST /actions/{id}/approve`.
 
 ## Feature map
 
 | Feature | Status | What works today |
 |---|---|---|
-| Research & Q&A | Working, tested | Ask a question (sync or as a durable background job), get a source-backed answer, saved results. Needs one search provider key (OpenAI, Perplexity or Exa). |
-| Content creation | Working, tested | Topic -> post draft via OpenAI, per platform. Never publishes. |
+| Agent loop | Working, tested | LangGraph plan/tool/observe loop over the features below; bounded; writes only queue approvals. Needs the local model server running. |
+| Research & Q&A | Working, tested | Local Qwen3 writes the answer, Exa fetches fresh web sources; claims are linked to sources, unsupported ones are surfaced. Without EXA_API_KEY it reports unconfigured rather than guessing. Hosted providers (OpenAI/Perplexity) remain explicit opt-ins. |
+| Content creation | Working, tested | Topic -> post draft via the local model, per platform. Never publishes. |
 | Gmail / Google Calendar | Coded, needs Google OAuth | Read mail and list events (read-only), send mail, create events. Writes go through per-action approval. |
 | Phone calls | Coded, needs Twilio | Start an outbound call via Twilio Voice. Same gating. |
 | Instagram | Coded, needs Meta app | Photo/Reel publishing containers for professional accounts. |
@@ -72,6 +101,7 @@ there is no multi-tenant isolation.
 ## HTTP surface
 
 ```
+POST /agent/chat            one bounded agent turn: plan, use tools, answer
 POST /research/ask            question -> answer (synchronous)
 POST /research/jobs           question -> background job (durable, requeued after restart)
 GET  /research/jobs/{id}      poll job status -> answer_id
@@ -97,6 +127,8 @@ POST /actions/{id}/reject     block it
 ```
 src/jarvis/
   config.py             settings from environment, credential gating
+  llm.py                LangChain chat model: local Qwen3 default, OpenAI opt-in
+  agent/                LangGraph agent loop + tool wiring
   schemas.py            shared pydantic models
   research/             question -> research job -> sourced answer -> store
   connectors/           one module per platform family, all gated
