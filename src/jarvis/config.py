@@ -35,6 +35,21 @@ class Settings:
     perplexity_api_key: Optional[str] = None
     exa_api_key: Optional[str] = None
 
+    # --- Model (LLM) settings ---
+    # "local" (default): a self-hosted Qwen3 8B served over an
+    # OpenAI-compatible endpoint (LM Studio, Ollama, MLX or vLLM).
+    # "openai": hosted OpenAI, explicit opt-in only.
+    llm_provider: str = "local"
+    local_llm_base_url: str = "http://127.0.0.1:1234/v1"
+    local_llm_model: str = "qwen3-8b"
+    local_llm_api_key: str = "EMPTY"
+    # Research provider: unset means "local" (Qwen3 synthesis + Exa web
+    # search). Set JARVIS_RESEARCH_PROVIDER to openai, perplexity or exa
+    # to opt into a hosted provider instead.
+    research_provider: Optional[str] = None
+    # Agent loop bound: maximum plan/tool rounds per chat request.
+    agent_max_steps: int = 8
+
     google_access_token: Optional[str] = None
 
     twilio_account_sid: Optional[str] = None
@@ -62,6 +77,14 @@ class Settings:
             openai_api_key=_env("OPENAI_API_KEY"),
             perplexity_api_key=_env("PERPLEXITY_API_KEY"),
             exa_api_key=_env("EXA_API_KEY"),
+            llm_provider=os.environ.get("JARVIS_LLM_PROVIDER", "local").strip().lower() or "local",
+            local_llm_base_url=os.environ.get(
+                "JARVIS_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1"
+            ).strip(),
+            local_llm_model=os.environ.get("JARVIS_LOCAL_LLM_MODEL", "qwen3-8b").strip(),
+            local_llm_api_key=os.environ.get("JARVIS_LOCAL_LLM_API_KEY", "EMPTY").strip(),
+            research_provider=_env("JARVIS_RESEARCH_PROVIDER"),
+            agent_max_steps=int(os.environ.get("JARVIS_AGENT_MAX_STEPS", "8")),
             google_access_token=_env("GOOGLE_ACCESS_TOKEN"),
             twilio_account_sid=_env("TWILIO_ACCOUNT_SID"),
             twilio_auth_token=_env("TWILIO_AUTH_TOKEN"),
