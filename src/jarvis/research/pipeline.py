@@ -30,13 +30,15 @@ class ResearchPipeline:
             raise ValueError("question must not be empty")
 
         if not self.provider.available():
+            hint = getattr(
+                self.provider,
+                "configuration_hint",
+                "Set one of OPENAI_API_KEY, PERPLEXITY_API_KEY, EXA_API_KEY.",
+            )
             answer = ResearchAnswer(
                 question=question,
                 status=AnswerStatus.NEEDS_CONFIGURATION,
-                detail=(
-                    f"Provider '{self.provider.name}' is not configured. "
-                    "Set one of OPENAI_API_KEY, PERPLEXITY_API_KEY, EXA_API_KEY."
-                ),
+                detail=f"Provider '{self.provider.name}' is not configured. {hint}",
             )
             self.store.save_answer(answer)
             return answer
