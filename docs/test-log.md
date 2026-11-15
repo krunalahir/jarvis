@@ -59,3 +59,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:12 IST - PASS (1.24s) - `tests/test_regressions.py::test_twilio_twiml_escapes_spoken_text`
 - 01:13 IST - PASS (1.22s) - `tests/test_regressions.py::test_agent_chat_rejects_bad_history_role`
 - 01:13 IST - PASS (1.41s) - `tests/test_regressions.py::test_agent_chat_rejects_oversized_history_content`
+- 01:13 IST - PASS (1.20s) - `tests/test_regressions.py::test_agent_chat_rejects_overlong_history`
