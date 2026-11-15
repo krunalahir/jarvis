@@ -61,3 +61,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:13 IST - PASS (1.41s) - `tests/test_regressions.py::test_agent_chat_rejects_oversized_history_content`
 - 01:13 IST - PASS (1.20s) - `tests/test_regressions.py::test_agent_chat_rejects_overlong_history`
 - 01:14 IST - PASS (1.30s) - `tests/test_regressions.py::test_run_agent_truncates_history_to_recent_turns`
+- 01:14 IST - PASS (1.32s) - `tests/test_features.py::test_schedule_naive_datetime_is_treated_as_utc`
