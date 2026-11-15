@@ -19,13 +19,65 @@ November 2026 - re-verify before relying on these):
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import socket
 import tempfile
 from typing import Optional
+from urllib.parse import urljoin, urlparse
 
 from ..schemas import PostDraft
 from .base import Connector, PlatformAccessRequired
+
+# Media download guards (YouTube draft publishing fetches the draft's media
+# URL). The URL ultimately comes from a user-created draft, but it is still
+# an arbitrary remote fetch from this machine, so it is treated as untrusted:
+# scheme restricted, host must resolve to public IPs only (SSRF protection),
+# redirects re-validated hop by hop, and total bytes capped.
+MAX_MEDIA_BYTES = 200 * 1024 * 1024  # 200 MB
+MAX_MEDIA_REDIRECTS = 3
+
+
+def _resolve_host_ips(host: str) -> list[str]:
+    """Resolve a host to IP strings. Isolated so tests can stub DNS."""
+    infos = socket.getaddrinfo(host, None)
+    return [info[4][0] for info in infos]
+
+
+def validate_media_url(url: str) -> None:
+    """Reject media URLs that are not plain public http(s).
+
+    Blocks file:/ftp: schemes, hostnames that do not resolve, and any host
+    resolving to a loopback/private/link-local/reserved address (cloud
+    metadata endpoints, internal services). Note: DNS is re-resolved by the
+    HTTP client at connect time, so a hostile DNS rebinding attack is not
+    fully excluded here; the remaining exposure is accepted for user-supplied
+    draft media, and the bytes cap limits the blast radius.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"media URL must be http(s), got {parsed.scheme or 'no scheme'}")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("media URL has no host")
+    try:
+        ips = _resolve_host_ips(host)
+    except socket.gaierror as exc:
+        raise ValueError(f"media URL host does not resolve: {host}") from exc
+    for ip_text in ips:
+        ip = ipaddress.ip_address(ip_text)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError(
+                f"media URL host {host} resolves to non-public address {ip_text}; refusing"
+            )
 
 
 class InstagramConnector(Connector):
@@ -134,13 +186,40 @@ class YouTubeConnector(Connector):
                 os.unlink(temp_path)
 
     def _download(self, url: str) -> str:
-        """Fetch a public media URL to a temp file and return its path."""
-        with self._client.stream("GET", url) as response:
-            response.raise_for_status()
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-                for chunk in response.iter_bytes():
-                    tmp.write(chunk)
-                return tmp.name
+        """Fetch a media URL to a temp file and return its path.
+
+        The URL is validated (public http(s) only), redirects are followed
+        manually with each hop re-validated, and the download is capped at
+        MAX_MEDIA_BYTES. Partial downloads are deleted on any failure.
+        """
+        current = url
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        try:
+            for _ in range(MAX_MEDIA_REDIRECTS + 1):
+                validate_media_url(current)
+                with self._client.stream("GET", current) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ValueError("media redirect without a Location header")
+                        current = urljoin(current, location)
+                        continue
+                    response.raise_for_status()
+                    total = 0
+                    for chunk in response.iter_bytes():
+                        total += len(chunk)
+                        if total > MAX_MEDIA_BYTES:
+                            raise ValueError(
+                                f"media exceeds the {MAX_MEDIA_BYTES // (1024 * 1024)} MB limit"
+                            )
+                        tmp.write(chunk)
+                    tmp.close()
+                    return tmp.name
+            raise ValueError(f"media URL redirected more than {MAX_MEDIA_REDIRECTS} times")
+        except Exception:
+            tmp.close()
+            os.unlink(tmp.name)
+            raise
 
 
 class SnapchatConnector(Connector):
@@ -159,4 +238,3 @@ class SnapchatConnector(Connector):
             "Snapchat posting needs Snap Public Profile API partner access. "
             "Creative Kit only supports user-initiated sharing from the app."
         )
-
