@@ -83,3 +83,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:19 IST - PASS (1.43s) - `tests/test_features.py::test_x_publish_refused_when_actions_disabled`
 - 01:20 IST - PASS (1.45s) - `tests/test_features.py::test_youtube_upload_from_local_file_path`
 - 01:20 IST - PASS (1.43s) - `tests/test_features.py::test_spotify_play_without_query_resumes`
+- 01:20 IST - PASS (1.20s) - `tests/test_features.py::test_spotify_play_unknown_track_is_a_clear_error`
