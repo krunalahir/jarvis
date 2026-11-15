@@ -92,3 +92,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:24 IST - PASS (1.43s) - `tests/test_features.py::test_read_emails_tool_reports_unconfigured_cleanly`
 - 01:24 IST - PASS (1.26s) - `tests/test_features.py::test_health_reports_security_warnings_without_api_key`
 - 01:24 IST - PASS (1.29s) - `tests/test_features.py::test_every_write_endpoint_requires_api_key_when_set`
+- 01:25 IST - PASS (1.23s) - `tests/test_features.py::test_actions_enabled_without_key_refused_even_with_allow_insecure_unset`
