@@ -57,3 +57,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:12 IST - PASS (1.21s) - `tests/test_regressions.py::test_youtube_download_enforces_size_cap_and_cleans_up`
 - 01:12 IST - PASS (1.30s) - `tests/test_regressions.py::test_youtube_download_follows_valid_redirect`
 - 01:12 IST - PASS (1.24s) - `tests/test_regressions.py::test_twilio_twiml_escapes_spoken_text`
+- 01:13 IST - PASS (1.22s) - `tests/test_regressions.py::test_agent_chat_rejects_bad_history_role`
