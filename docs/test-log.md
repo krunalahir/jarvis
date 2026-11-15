@@ -48,3 +48,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:09 IST - PASS (1.26s) - `tests/test_regressions.py::test_store_survives_concurrent_writers`
 - 01:10 IST - PASS (1.31s) - `tests/test_regressions.py::test_gmail_read_messages_fetches_bodies`
 - 01:10 IST - PASS (1.42s) - `tests/test_regressions.py::test_youtube_publish_downloads_video_from_draft_media_url`
+- 01:10 IST - PASS (1.19s) - `tests/test_regressions.py::test_youtube_publish_without_video_source_fails_loudly`
