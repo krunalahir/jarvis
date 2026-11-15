@@ -3,6 +3,7 @@
 from .pipeline import ResearchPipeline
 from .providers import (
     ExaProvider,
+    LocalQwenResearchProvider,
     OpenAIWebSearchProvider,
     PerplexityProvider,
     ProviderResult,
@@ -14,6 +15,7 @@ from .store import Store
 __all__ = [
     "ResearchPipeline",
     "ProviderResult",
+    "LocalQwenResearchProvider",
     "OpenAIWebSearchProvider",
     "PerplexityProvider",
     "ExaProvider",
