@@ -51,3 +51,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:10 IST - PASS (1.19s) - `tests/test_regressions.py::test_youtube_publish_without_video_source_fails_loudly`
 - 01:11 IST - PASS (1.19s) - `tests/test_regressions.py::test_youtube_scheduled_draft_sets_native_publish_at`
 - 01:11 IST - PASS (1.35s) - `tests/test_regressions.py::test_media_url_rejects_non_http_schemes`
+- 01:11 IST - PASS (1.25s) - `tests/test_regressions.py::test_media_url_rejects_private_and_metadata_ips`
