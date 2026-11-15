@@ -70,3 +70,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:16 IST - PASS (1.41s) - `tests/test_features.py::test_publish_now_queues_approval_and_never_publishes_directly`
 - 01:16 IST - PASS (1.23s) - `tests/test_features.py::test_publish_now_unknown_draft_is_404`
 - 01:16 IST - PASS (1.36s) - `tests/test_features.py::test_approved_publish_executes_through_connector`
+- 01:16 IST - PASS (1.22s) - `tests/test_features.py::test_recovery_is_noop_on_clean_store`
