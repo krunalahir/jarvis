@@ -86,3 +86,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:20 IST - PASS (1.20s) - `tests/test_features.py::test_spotify_play_unknown_track_is_a_clear_error`
 - 01:23 IST - PASS (1.29s) - `tests/test_features.py::test_twilio_uses_account_scoped_url_and_auth`
 - 01:23 IST - PASS (1.47s) - `tests/test_features.py::test_request_tools_queue_every_write_kind`
+- 01:23 IST - PASS (1.29s) - `tests/test_features.py::test_draft_post_tool_rejects_unknown_platform`
