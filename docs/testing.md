@@ -1,8 +1,12 @@
 # Testing
 
-Last full run: **105 passed** (5 consecutive full-suite runs, no failures),
+Last full run: **111 passed** (5 consecutive full-suite runs of the first 105, then the expanded suite after the media-download hardening below),
 November 16, 2026. Run it yourself with `pytest` - no credentials, no
-network, no model server needed.
+network, no model server needed. DNS is stubbed in the media-download
+tests so they stay hermetic.
+
+The per-test execution log (individual runs with results, in the order they
+happened) is in docs/test-log.md.
 
 | File | Tests | Covers |
 |---|---|---|
@@ -15,7 +19,7 @@ network, no model server needed.
 | tests/test_llm.py | 4 | Local default, OpenAI opt-in gating, unreachable-server errors |
 | tests/test_local_research.py | 5 | Local provider: search-key requirement, synthesis only from sources |
 | tests/test_providers.py | 6 | Provider mapping, HTTP failure handling, scheduler success path |
-| tests/test_regressions.py | 15 | The Nov 2026 review findings (below) |
+| tests/test_regressions.py | 21 | The Nov 2026 review findings (below) + media-download hardening |
 | tests/test_research.py | 6 | Research pipeline, unsupported claims surfaced |
 
 ## What the November 2026 review found, and the fix + test for each
@@ -67,6 +71,24 @@ network, no model server needed.
    `test_agent_chat_rejects_oversized_history_content`,
    `test_agent_chat_rejects_overlong_history`,
    `test_run_agent_truncates_history_to_recent_turns`.
+
+## Follow-up hardening (not from the review): media download
+
+Finding 3's fix made the YouTube connector fetch an arbitrary URL from a
+draft, which opened a server-side request forgery hole: a draft whose media
+URL pointed at `169.254.169.254` (cloud metadata) or an internal service
+would have the server fetch it. Hardened `_download`: http(s) only, the
+host must resolve to public IPs only (loopback/private/link-local/reserved
+rejected), redirects are followed manually with each hop re-validated, the
+download is capped at 200 MB, and partial files are deleted on failure.
+DNS is re-resolved by the HTTP client at connect time, so DNS rebinding is
+not fully excluded; the residual risk is documented in the code. Tests:
+`test_media_url_rejects_non_http_schemes`,
+`test_media_url_rejects_private_and_metadata_ips`,
+`test_media_url_rejects_unresolvable_host`,
+`test_youtube_download_rejects_redirect_to_metadata_endpoint`,
+`test_youtube_download_enforces_size_cap_and_cleans_up`,
+`test_youtube_download_follows_valid_redirect`.
 
 ## What these tests prove, and what they cannot
 
