@@ -73,3 +73,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:16 IST - PASS (1.22s) - `tests/test_features.py::test_recovery_is_noop_on_clean_store`
 - 01:17 IST - PASS (1.25s) - `tests/test_features.py::test_recovery_leaves_pending_actions_alone`
 - 01:17 IST - PASS (1.34s) - `tests/test_features.py::test_recovery_unknown_outcome_message_mentions_no_retry`
+- 01:17 IST - PASS (1.24s) - `tests/test_features.py::test_claim_action_returns_none_for_decided_action`
