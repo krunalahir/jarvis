@@ -28,3 +28,7 @@ per-test commits.
   `tests/test_llm.py` 4 passed in 0.43s; `tests/test_local_research.py`
   5 passed in 0.53s; `tests/test_providers.py` 6 passed in 0.51s;
   `tests/test_research.py` 6 passed in 0.52s.
+- 00:58 - Final full-suite confirmation on the fresh checkout after every
+  repair commit: 105 passed in 2.13s. Tree verified clean: no prefixed
+  duplicate files, no missing files, remote content byte-identical to the
+  tested working copy (trailing newline aside).
