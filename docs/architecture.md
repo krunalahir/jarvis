@@ -48,7 +48,7 @@ FastAPI HTTP API (api.py) --------------- X-API-Key required on every route
       |      Snapchat is a scaffold that fails loudly (partner API only).
       |      YouTube draft publishing downloads the draft's media URL;
       |      that fetch is hardened: http(s) only, host must resolve to a
-      |      public IP (SSRF guard), redirects re-validated, 200 MB cap, optional host allowlist (JARVIS_MEDIA_URL_ALLOWLIST) for fail-closed deployments.
+      |      public IP (SSRF guard), redirects re-validated, 200 MB cap, optional host allowlist (JARVIS_MEDIA_URL_ALLOWLIST; not a complete DNS-rebinding fix).
       |
       +--> Store (research/store.py)
              SQLite: answers, drafts, jobs, actions. One store-wide lock,
