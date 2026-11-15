@@ -46,3 +46,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:09 IST - PASS (1.40s) - `tests/test_regressions.py::test_interrupted_draft_marked_unknown_and_not_republished`
 - 01:09 IST - PASS (1.27s) - `tests/test_regressions.py::test_create_app_recovers_interrupted_state_on_startup`
 - 01:09 IST - PASS (1.26s) - `tests/test_regressions.py::test_store_survives_concurrent_writers`
+- 01:10 IST - PASS (1.31s) - `tests/test_regressions.py::test_gmail_read_messages_fetches_bodies`
