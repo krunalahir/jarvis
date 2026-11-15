@@ -23,3 +23,8 @@ per-test commits.
   (approval gate, jobs, citations); `tests/test_agent.py` 5 passed in
   0.72s (agent loop bounds, write tools only queue);
   `tests/test_api.py` 10 passed in 0.96s (HTTP surface, API key).
+- 00:57 - Connector and provider areas: `tests/test_connectors.py` 10
+  passed in 0.07s; `tests/test_content.py` 4 passed in 0.44s;
+  `tests/test_llm.py` 4 passed in 0.43s; `tests/test_local_research.py`
+  5 passed in 0.53s; `tests/test_providers.py` 6 passed in 0.51s;
+  `tests/test_research.py` 6 passed in 0.52s.
