@@ -1,18 +1,22 @@
 """Content creation: turn a topic into a platform-ready post draft.
 
-Uses OpenAI when OPENAI_API_KEY is set. Without it, generation is
-unavailable - JARVIS does not pretend to write content it cannot.
-Generating a draft never publishes anything; publishing is a separate,
-approved action.
+Uses the configured chat model through LangChain: the self-hosted Qwen3
+8B by default, hosted OpenAI only with JARVIS_LLM_PROVIDER=openai. If the
+model cannot be reached, generation is reported unavailable - JARVIS does
+not pretend to write content it cannot. Generating a draft never
+publishes anything; publishing is a separate, approved action.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-import httpx
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
 from .config import Settings
+from .llm import LLMNotConfigured, build_chat_model
 from .schemas import Platform
 
 
@@ -27,35 +31,56 @@ _LENGTH_HINTS = {
     Platform.SNAPCHAT: "a short caption",
 }
 
+_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are JARVIS, a writing assistant. Write {length} for "
+            "{platform} about the user's topic. Tone: {tone}. "
+            "Return only the post text.",
+        ),
+        ("human", "{topic}"),
+    ]
+)
+
 
 class ContentGenerator:
-    endpoint = "https://api.openai.com/v1/chat/completions"
-
-    def __init__(self, settings: Settings, client: Optional[httpx.Client] = None):
-        self._api_key = settings.openai_api_key
-        self._client = client or httpx.Client(timeout=60)
+    def __init__(self, settings: Settings, model: Optional[BaseChatModel] = None):
+        self._settings = settings
+        self._model = model
 
     def available(self) -> bool:
-        return bool(self._api_key)
+        # "local" needs no key; reachability is checked when generating.
+        # "openai" is a paid opt-in and needs its key up front.
+        if self._settings.llm_provider == "openai":
+            return bool(self._settings.openai_api_key)
+        return True
 
     def generate(self, platform: Platform, topic: str, tone: Optional[str] = None) -> str:
         if not self.available():
             raise ContentGenerationUnavailable(
-                "Content generation needs OPENAI_API_KEY. Set it, or write the "
-                "post text yourself and create the draft directly."
+                "JARVIS_LLM_PROVIDER=openai needs OPENAI_API_KEY. Leave the "
+                "provider as 'local' to use your self-hosted Qwen3 8B, or "
+                "write the post text yourself and create the draft directly."
             )
-        length = _LENGTH_HINTS.get(platform, "a short post")
-        prompt = (
-            f"Write {length} for {platform.value} about: {topic}. "
-            f"Tone: {tone or 'clear and direct'}. Return only the post text."
-        )
-        response = self._client.post(
-            self.endpoint,
-            headers={"Authorization": f"Bearer {self._api_key}"},
-            json={
-                "model": "gpt-4.1-mini",
-                "messages": [{"role": "user", "content": prompt}],
-            },
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
+        try:
+            model = self._model or build_chat_model(self._settings)
+        except LLMNotConfigured as exc:
+            raise ContentGenerationUnavailable(str(exc)) from exc
+        chain = _PROMPT | model | StrOutputParser()
+        try:
+            text = chain.invoke(
+                {
+                    "platform": platform.value,
+                    "topic": topic,
+                    "tone": tone or "clear and direct",
+                    "length": _LENGTH_HINTS.get(platform, "a short post"),
+                }
+            )
+        except Exception as exc:
+            raise ContentGenerationUnavailable(
+                "Could not reach the local model server at "
+                f"{self._settings.local_llm_base_url} ({exc}). Is Qwen3 8B "
+                "running there? See docs/local-model.md."
+            ) from exc
+        return text.strip()
