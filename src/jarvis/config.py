@@ -70,10 +70,12 @@ class Settings:
 
     # Optional host allowlist for draft media downloads (YouTube
     # publishing fetches the draft's media URL). When set, ONLY these
-    # hosts (exact or parent domain) may be fetched - the fail-closed
-    # option. When empty, any public http(s) URL is allowed after the
-    # built-in validation, which still carries a documented DNS-rebinding
-    # residual. Set this for any deployment beyond local use.
+    # hosts (exact match or their subdomains) may be fetched. When empty
+    # (the default), any public http(s) URL passes validation - the
+    # default does NOT block all hosts. Subdomain matching and separate
+    # resolve-vs-connect DNS lookups mean this is risk reduction, not a
+    # complete DNS-rebinding fix. Set it for any deployment beyond
+    # local use.
     media_url_allowlist: tuple[str, ...] = ()
 
     @classmethod
