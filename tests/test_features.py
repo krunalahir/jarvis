@@ -113,7 +113,11 @@ def test_draft_with_platform_post_id_is_never_reposted(store):
     assert calls == []  # skipped: the platform id proves it was posted
 
 
-def test_youtube_draft_publishes_end_to_end_through_scheduler(store):
+def test_youtube_draft_publishes_end_to_end_through_scheduler(store, monkeypatch):
+    monkeypatch.setattr(
+        "jarvis.connectors.social._resolve_host_ips", lambda host: ["93.184.216.34"]
+    )
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "cdn.example.com":
             return httpx.Response(200, content=b"video-bytes")
