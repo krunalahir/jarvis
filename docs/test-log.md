@@ -16,3 +16,6 @@ per-test commits.
   (9 commits), then a repair series replaced the accidentally prefixed
   upload files (1-actions.py et al.) with the correctly named files.
 - 00:56 - Fresh checkout of main, clean environment: 105 passed in 2.24s.
+- 00:57 - Per-area runs on the fresh checkout, review-fix checks:
+  `tests/test_regressions.py` 15 passed in 1.41s; `tests/test_features.py`
+  32 passed in 0.99s.
