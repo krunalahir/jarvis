@@ -131,3 +131,31 @@ class PostDraft(BaseModel):
     platform_post_id: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class AgentStep(BaseModel):
+    """One tool the agent called while working."""
+
+    tool: str
+    arguments: dict = Field(default_factory=dict)
+
+
+class AgentRunStatus(str, Enum):
+    ANSWERED = "answered"
+    STOPPED_STEP_LIMIT = "stopped_step_limit"  # loop bound hit; nothing was left running
+    FAILED = "failed"
+
+
+class AgentReply(BaseModel):
+    """Result of one agent chat turn.
+
+    pending_action_ids lists any write actions the agent queued through
+    the approval gate. The agent can only request them; each still needs
+    the user's explicit approval before anything executes.
+    """
+
+    reply: str
+    status: AgentRunStatus
+    steps: list[AgentStep] = Field(default_factory=list)
+    pending_action_ids: list[str] = Field(default_factory=list)
+    detail: str = ""
