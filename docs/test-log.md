@@ -76,3 +76,4 @@ November 16, 2026. Run against the working copy that matches `main`
 - 01:17 IST - PASS (1.24s) - `tests/test_features.py::test_claim_action_returns_none_for_decided_action`
 - 01:18 IST - PASS (1.26s) - `tests/test_features.py::test_file_store_sets_wal_and_busy_timeout`
 - 01:18 IST - PASS (1.53s) - `tests/test_features.py::test_gmail_html_only_message_falls_back_to_snippet`
+- 01:18 IST - PASS (1.24s) - `tests/test_features.py::test_gmail_read_messages_empty_search`
