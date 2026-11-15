@@ -11,11 +11,16 @@ with YaRN) and native tool calling, which is what the agent loop uses.
 
 ## Hardware guideline
 
-- Apple Silicon Mac with 16 GB of unified memory or more is the
-  comfortable floor for the 4-bit builds (about a 5 GB download).
-- A Linux/Windows PC or server with a GPU of about 12 GB VRAM or more
-  runs the quantized builds; full precision wants about 20 GB.
-- Slower machines still work, answers just take longer.
+These are recommended targets based on published build sizes, not verified
+minimums. We have not tested specific hardware, so treat them as starting
+points, not a guaranteed fit.
+
+- An Apple Silicon Mac with 16 GB of unified memory is the commonly
+  recommended target for the 4-bit builds (about a 5 GB download).
+- On a Linux/Windows PC or server, quantized builds are generally run on
+  a GPU with about 12 GB VRAM; full precision wants about 20 GB.
+- Smaller or slower machines may still work with more aggressive
+  quantization; answers just take longer. Verify on your own hardware.
 
 ## Option A: LM Studio (easiest, Mac)
 
