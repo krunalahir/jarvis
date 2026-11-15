@@ -32,3 +32,11 @@ per-test commits.
   repair commit: 105 passed in 2.13s. Tree verified clean: no prefixed
   duplicate files, no missing files, remote content byte-identical to the
   tested working copy (trailing newline aside).
+
+## Individual per-test runs
+
+Each line below is one distinct test executed on its own
+(`pytest <test>`), with this file committed to GitHub right after that
+execution and before the next one, in the order shown. All times IST,
+November 16, 2026. Run against the working copy that matches `main`
+(trailing newline aside), after the media-download hardening commits.
