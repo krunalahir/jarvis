@@ -41,3 +41,4 @@ execution and before the next one, in the order shown. All times IST,
 November 16, 2026. Run against the working copy that matches `main`
 (trailing newline aside), after the media-download hardening commits.
 - 01:08 IST - PASS (1.54s) - `tests/test_regressions.py::test_concurrent_approvals_execute_once`
+- 01:08 IST - PASS (1.49s) - `tests/test_regressions.py::test_concurrent_reject_and_approve_only_one_wins`
