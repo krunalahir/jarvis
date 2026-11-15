@@ -68,6 +68,14 @@ class Settings:
     # anyone else.
     allow_insecure: bool = False
 
+    # Optional host allowlist for draft media downloads (YouTube
+    # publishing fetches the draft's media URL). When set, ONLY these
+    # hosts (exact or parent domain) may be fetched - the fail-closed
+    # option. When empty, any public http(s) URL is allowed after the
+    # built-in validation, which still carries a documented DNS-rebinding
+    # residual. Set this for any deployment beyond local use.
+    media_url_allowlist: tuple[str, ...] = ()
+
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
@@ -94,6 +102,11 @@ class Settings:
             x_bearer_token=_env("X_BEARER_TOKEN"),
             spotify_access_token=_env("SPOTIFY_ACCESS_TOKEN"),
             allow_insecure=_flag("JARVIS_ALLOW_INSECURE"),
+            media_url_allowlist=tuple(
+                h.strip().lower()
+                for h in os.environ.get("JARVIS_MEDIA_URL_ALLOWLIST", "").split(",")
+                if h.strip()
+            ),
         )
 
     def security_warnings(self) -> list[str]:
