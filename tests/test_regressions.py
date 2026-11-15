@@ -417,6 +417,55 @@ def test_youtube_download_enforces_size_cap_and_cleans_up(monkeypatch, tmp_path)
     assert set(os.listdir(tempfile.gettempdir())) == before  # partial download removed
 
 
+def test_media_url_allowlist_blocks_unlisted_host(monkeypatch):
+    _public_dns(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request should leave for an unlisted host")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    yt = YouTubeConnector(
+        settings(
+            google_access_token="tok",
+            actions_enabled=True,
+            media_url_allowlist=("cdn.mycompany.com",),
+        ),
+        client=client,
+    )
+    draft = PostDraft(
+        platform=Platform.YOUTUBE,
+        text="clip",
+        media_urls=["https://random-cdn.example/clip.mp4"],
+    )
+    with pytest.raises(ValueError, match="ALLOWLIST"):
+        yt.publish_draft(draft)
+
+
+def test_media_url_allowlist_permits_listed_host_and_subdomain(monkeypatch):
+    _public_dns(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host.endswith("cdn.mycompany.com"):
+            return httpx.Response(200, content=b"v")
+        return httpx.Response(200, json={"id": "yt-al"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    yt = YouTubeConnector(
+        settings(
+            google_access_token="tok",
+            actions_enabled=True,
+            media_url_allowlist=("cdn.mycompany.com",),
+        ),
+        client=client,
+    )
+    draft = PostDraft(
+        platform=Platform.YOUTUBE,
+        text="clip",
+        media_urls=["https://eu.cdn.mycompany.com/clip.mp4"],
+    )
+    assert yt.publish_draft(draft)["id"] == "yt-al"
+
+
 def test_youtube_download_follows_valid_redirect(monkeypatch):
     _public_dns(monkeypatch)
 
