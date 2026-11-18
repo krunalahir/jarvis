@@ -20,7 +20,25 @@ from ..content import ContentGenerationUnavailable, ContentGenerator
 from ..research.pipeline import ResearchPipeline
 from ..research.providers import ProviderError, exa_search_sources
 from ..scheduler import PublishScheduler
-from ..schemas import ActionKind, Platform
+from ..schemas import ActionKind, Platform, Route
+
+
+# Which tools each route's agent may use. The router picks one route per
+# message; the agent that executes it sees only that route's tools, so a
+# Gmail task cannot wander into Spotify and a direct answer calls nothing
+# at all. connector_status rides along on app routes so the agent can say
+# exactly what is missing when an app is not configured.
+ROUTE_TOOLS: dict[Route, tuple[str, ...]] = {
+    Route.RESEARCH: ("research", "web_search"),
+    Route.WEB_SEARCH: ("web_search",),
+    Route.GMAIL: ("read_emails", "request_send_email", "connector_status"),
+    Route.CALENDAR: ("list_calendar_events", "request_create_event", "connector_status"),
+    Route.PHONE_CALL: ("request_phone_call", "connector_status"),
+    Route.SPOTIFY: ("request_spotify_play", "connector_status"),
+    Route.SOCIAL_CONTENT: ("draft_post", "request_publish_draft", "connector_status"),
+    Route.APP_STATUS: ("connector_status",),
+    Route.DIRECT_ANSWER: (),
+}
 
 
 def build_tools(
@@ -31,10 +49,12 @@ def build_tools(
     generator: ContentGenerator,
     connectors: dict,
     pending_action_ids: Optional[list] = None,
+    route: Optional[Route] = None,
 ) -> list:
     """Build the agent's tool list. `pending_action_ids`, when given,
     collects the id of every action the agent queues, so the caller can
-    report them back to the user."""
+    report them back to the user. With `route`, only that route's tools
+    are built (ROUTE_TOOLS); without it the full list is returned."""
 
     def _record(action) -> str:
         if pending_action_ids is not None:
@@ -202,7 +222,7 @@ def build_tools(
         )
         return _record(action)
 
-    return [
+    all_tools = [
         web_search,
         research,
         draft_post,
@@ -215,4 +235,8 @@ def build_tools(
         request_spotify_play,
         request_publish_draft,
     ]
+    if route is None:
+        return all_tools
+    allowed = set(ROUTE_TOOLS[route])
+    return [t for t in all_tools if t.name in allowed]
 
