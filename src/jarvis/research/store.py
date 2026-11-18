@@ -22,6 +22,7 @@ from ..schemas import (
     PostDraft,
     ResearchAnswer,
     ResearchJob,
+    TaskUpdate,
 )
 
 _SCHEMA = """
@@ -50,6 +51,13 @@ CREATE TABLE IF NOT EXISTS actions (
     payload TEXT NOT NULL,
     status TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS task_updates (
+    task_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (task_id, seq)
+);
 """
 
 
@@ -67,6 +75,29 @@ class Store:
         # One lock for the whole store: methods do read-modify-write, so
         # per-statement SQLite serialization alone is not sufficient.
         self._lock = threading.RLock()
+
+    # --- task monitor updates ---
+
+    def save_task_update(self, update: TaskUpdate) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO task_updates (task_id, seq, payload, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    update.task_id,
+                    update.seq,
+                    update.model_dump_json(),
+                    update.created_at.isoformat(),
+                ),
+            )
+            self._conn.commit()
+
+    def list_task_updates(self, task_id: str) -> list[TaskUpdate]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT payload FROM task_updates WHERE task_id = ? ORDER BY seq",
+                (task_id,),
+            ).fetchall()
+        return [TaskUpdate.model_validate_json(row[0]) for row in rows]
 
     def close(self) -> None:
         with self._lock:
