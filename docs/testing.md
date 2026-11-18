@@ -1,7 +1,8 @@
 # Testing
 
-Last full run: **113 passed** (5 consecutive full-suite runs of the first 105, then the expanded suite after the media-download hardening below),
-November 16, 2026. Run it yourself with `pytest` - no credentials, no
+Last full run: **140 passed**, November 18, 2026 (after the router
+architecture update; previous baseline: 113 passed on November 16, 2026).
+Run it yourself with `pytest` - no credentials, no
 network, no model server needed. DNS is stubbed in the media-download
 tests so they stay hermetic.
 
@@ -12,6 +13,9 @@ happened) is in docs/test-log.md.
 |---|---|---|
 | tests/test_actions.py | 8 | Approval gate cycle, executor failure visibility, durable jobs, citation validation, duplicate-post prevention |
 | tests/test_agent.py | 5 | Agent loop iteration, write tools only queue approvals, step-limit bound, stored cited answers |
+| tests/test_router.py | 11 | Model route classification, JSON parsing, keyword fallback chain, direct-answer default |
+| tests/test_monitor.py | 8 | Progress trail sequencing and persistence, auth supervision, retry-once recovery policy |
+| tests/test_orchestration.py | 8 | Full workflow: route picks scoped tools, monitor trail receipt-to-outcome, auth updates, recovery retry, chat API route + updates |
 | tests/test_api.py | 10 | Health, research endpoints, draft/schedule flow, API key enforcement, pending-until-approved, refusal to start insecure |
 | tests/test_connectors.py | 10 | Connector gating (configured/enabled), Gmail send shape, Instagram two-step, X post, Spotify search/play, Twilio gate, Snapchat scaffold |
 | tests/test_content.py | 4 | Content generation via model, unavailable states |
