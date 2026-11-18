@@ -134,6 +134,66 @@ class PostDraft(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class Route(str, Enum):
+    """The one capability the router picks for a chat message.
+
+    Every message gets exactly one route. DIRECT_ANSWER means no tool
+    fits: the model answers from what it knows and calls nothing.
+    """
+
+    DIRECT_ANSWER = "direct_answer"
+    RESEARCH = "research"
+    WEB_SEARCH = "web_search"
+    GMAIL = "gmail"
+    CALENDAR = "calendar"
+    PHONE_CALL = "phone_call"
+    SPOTIFY = "spotify"
+    SOCIAL_CONTENT = "social_content"
+    APP_STATUS = "app_status"
+
+
+class RouteDecision(BaseModel):
+    """The router's pick for one message.
+
+    source records how the route was chosen: "model" when the chat
+    model's classification parsed cleanly, "heuristic" when the keyword
+    fallback decided (model unparsable or unreachable).
+    """
+
+    route: Route
+    reason: str = ""
+    source: str = "model"
+
+
+class TaskStage(str, Enum):
+    """Stages the task monitor reports while one request runs."""
+
+    RECEIVED = "received"
+    ROUTED = "routed"
+    AUTH_CHECK = "auth_check"
+    EXECUTING = "executing"
+    STEP = "step"
+    APPROVAL_NEEDED = "approval_needed"
+    RECOVERING = "recovering"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class TaskUpdate(BaseModel):
+    """One progress update for a running task, written for the chat.
+
+    The monitor emits these from message receipt to completion (auth
+    checks, tool steps, approval requests, recovery, outcome) so the
+    chat client can show the user what JARVIS is doing while it works.
+    """
+
+    task_id: str
+    seq: int
+    stage: TaskStage
+    message: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class AgentStep(BaseModel):
     """One tool the agent called while working."""
 
@@ -153,6 +213,9 @@ class AgentReply(BaseModel):
     pending_action_ids lists any write actions the agent queued through
     the approval gate. The agent can only request them; each still needs
     the user's explicit approval before anything executes.
+
+    route is the router's pick for this message; task_id and updates are
+    the monitor's progress trail from receipt to outcome.
     """
 
     reply: str
@@ -160,4 +223,7 @@ class AgentReply(BaseModel):
     steps: list[AgentStep] = Field(default_factory=list)
     pending_action_ids: list[str] = Field(default_factory=list)
     detail: str = ""
+    route: Optional[Route] = None
+    task_id: Optional[str] = None
+    updates: list[TaskUpdate] = Field(default_factory=list)
 
