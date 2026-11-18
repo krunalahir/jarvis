@@ -12,6 +12,25 @@ through LangChain and a LangGraph agent loop: the model plans, calls a
 tool, reads the result and decides the next step. Web search stays a
 separate tool so fresh facts come from real sources, not model memory.
 
+## How it works
+
+One chat interface (`POST /agent/chat`). Every message runs the same
+agentic workflow:
+
+1. A router (the same chat model) reads the request and picks exactly
+   one route: research, web search, Gmail, calendar, a phone call,
+   Spotify, social content, an app-status check, or a direct answer
+   when no tool fits.
+2. A bounded agent loop executes the task with only that route's
+   tools: it plans, calls tools, reads results and decides the next
+   step until the task is done.
+3. A monitor supervises the whole run - authentication checks,
+   execution, recovery - and reports progress updates back into the
+   chat reply (also persisted; poll `GET /agent/tasks/{id}/updates`).
+
+Authentication is automatic once a platform's credentials are
+configured; the monitor says exactly what is missing when they are not.
+
 This repository is the base version. The research/Q&A core and the agent
 loop run and are tested offline. App connectors are real API client code,
 but each one stays inert until you supply that platform's credentials and
