@@ -20,7 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
 from .actions import ActionGate
-from .agent import build_agent, build_tools, run_agent
+from .agent import build_agent, build_tools, run_task
 from .config import Settings
 from .connectors import build_connectors
 from .content import ContentGenerationUnavailable, ContentGenerator
@@ -109,6 +109,7 @@ def create_app(
     connectors: Optional[dict] = None,
     content_generator: Optional[ContentGenerator] = None,
     agent_builder=None,
+    router=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     if settings.actions_enabled and not settings.api_key and not settings.allow_insecure:
@@ -169,27 +170,35 @@ def create_app(
 
     @app.post("/agent/chat", dependencies=[Depends(check_api_key)])
     def agent_chat(request: AgentChatRequest) -> dict:
-        # Tools and the pending-action list are built per request, so one
-        # chat turn can never see or claim another turn's queued actions.
-        pending: list = []
-        tools = build_tools(
+        # One chat entry point for everything: the router reads the
+        # message, picks the route (research, an app, or a direct
+        # answer), a bounded agent loop executes it with that route's
+        # tools, and the monitor supervises the run end to end. The
+        # reply carries the route and the progress updates.
+        reply = run_task(
             settings,
-            pipeline,
-            gate,
-            scheduler,
-            generator,
-            connectors,
-            pending_action_ids=pending,
-        )
-        builder = agent_builder or (lambda tool_list: build_agent(settings, tool_list))
-        reply = run_agent(
-            builder(tools),
             request.message,
-            max_steps=settings.agent_max_steps,
             history=request.history,
-            pending_action_ids=pending,
+            max_steps=settings.agent_max_steps,
+            store=store,
+            pipeline=pipeline,
+            gate=gate,
+            scheduler=scheduler,
+            generator=generator,
+            connectors=connectors,
+            agent_builder=(
+                (lambda tool_list: agent_builder(tool_list)) if agent_builder else None
+            ),
+            router=router,
         )
         return reply.model_dump(mode="json")
+
+    @app.get("/agent/tasks/{task_id}/updates", dependencies=[Depends(check_api_key)])
+    def task_updates(task_id: str) -> list[dict]:
+        updates = store.list_task_updates(task_id)
+        if not updates:
+            raise HTTPException(status_code=404, detail="task not found")
+        return [u.model_dump(mode="json") for u in updates]
 
     # --- research ---
 
