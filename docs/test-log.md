@@ -99,3 +99,26 @@ November 16, 2026. Run against the working copy that matches `main`
   (55 individual runs above + the remaining suite; the 113 total includes
   the 55 individually logged tests, the rest of test_api.py and the other
   pre-existing files).
+
+
+## 2026-11-18
+
+- 12:18-12:21 - Router architecture update (Krunal's workflow request:
+  one chat interface, model routes each request to the right tool or
+  answers directly, an AI monitor watches every task from auth through
+  completion and updates the user while it runs). New: agent/router.py
+  (model classification + keyword fallback), agent/monitor.py (progress
+  trail, auth supervision, retry-once recovery), run_task orchestration
+  in agent/graph.py, route-scoped tools (ROUTE_TOOLS), task_updates
+  persistence, chat API returns route + updates, polling endpoint.
+  27 new tests (tests/test_router.py, tests/test_monitor.py,
+  tests/test_orchestration.py).
+- Round results, each a full-suite run before the next round started:
+  Round 1 (router + models): 124 passed in 1.97s.
+  Round 2 (monitor + store): 132 passed in 1.84s.
+  Round 3 (orchestration + API): 140 passed in 4.85s.
+  One failure observed and fixed during Round 2 (env-var casing in the
+  auth-missing message) and one during Round 3 (keyword fallback missed
+  "play X" phrasing) - both fixed before the round's push.
+- All offline/mocked: scripted fake model, in-memory store, no live
+  endpoint contacted.
