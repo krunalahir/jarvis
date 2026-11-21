@@ -44,6 +44,10 @@ def _flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+DEFAULT_GOOGLE_REDIRECT_URI = "http://127.0.0.1:8000/auth/google/callback"
+DEFAULT_GOOGLE_TOKEN_FILE = ".google_tokens.json"
+
+
 @dataclass
 class Settings:
     """Runtime settings. Read with Settings.from_env()."""
@@ -71,7 +75,14 @@ class Settings:
     # Agent loop bound: maximum plan/tool rounds per chat request.
     agent_max_steps: int = 8
 
-    google_access_token: Optional[str] = None
+    # Google sign-in. The client id and secret come from your own Google
+    # Cloud OAuth client. There is no access token to configure: it is
+    # created when the user signs in (google_oauth.py) and kept in
+    # google_token_file.
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    google_redirect_uri: str = DEFAULT_GOOGLE_REDIRECT_URI
+    google_token_file: str = DEFAULT_GOOGLE_TOKEN_FILE
 
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
@@ -87,7 +98,11 @@ class Settings:
     # Escape hatch for running with actions enabled and no API key
     # (local-only demos). Never set this when the API is reachable by
     # anyone else.
+    # Testing only: the agent executes actions at once, with no approval step.
     allow_insecure: bool = False
+
+    # Testing only: the agent executes actions at once, with no approval step.
+    auto_approve: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -107,7 +122,10 @@ class Settings:
             local_llm_api_key=os.environ.get("JARVIS_LOCAL_LLM_API_KEY", "EMPTY").strip(),
             research_provider=_env("JARVIS_RESEARCH_PROVIDER"),
             agent_max_steps=int(os.environ.get("JARVIS_AGENT_MAX_STEPS", "8")),
-            google_access_token=_env("GOOGLE_ACCESS_TOKEN"),
+            google_client_id=_env("GOOGLE_CLIENT_ID"),
+            google_client_secret=_env("GOOGLE_CLIENT_SECRET"),
+            google_redirect_uri=_env("GOOGLE_REDIRECT_URI") or DEFAULT_GOOGLE_REDIRECT_URI,
+            google_token_file=_env("GOOGLE_TOKEN_FILE") or DEFAULT_GOOGLE_TOKEN_FILE,
             twilio_account_sid=_env("TWILIO_ACCOUNT_SID"),
             twilio_auth_token=_env("TWILIO_AUTH_TOKEN"),
             twilio_from_number=_env("TWILIO_FROM_NUMBER"),
@@ -116,6 +134,7 @@ class Settings:
             x_bearer_token=_env("X_BEARER_TOKEN"),
             spotify_access_token=_env("SPOTIFY_ACCESS_TOKEN"),
             allow_insecure=_flag("JARVIS_ALLOW_INSECURE"),
+            auto_approve=_flag("JARVIS_AUTO_APPROVE"),
         )
 
     def security_warnings(self) -> list[str]:

@@ -8,7 +8,7 @@ from .base import (
     PlatformAccessRequired,
 )
 from .calling import TwilioCallingConnector
-from .google_workspace import CalendarConnector, GmailConnector
+from .google_workspace import CalendarConnector, GmailConnector, GoogleConnector
 from .social import (
     InstagramConnector,
     SnapchatConnector,
@@ -29,13 +29,18 @@ ALL_CONNECTORS = [
 ]
 
 
-def build_connectors(settings, clients: dict | None = None) -> dict[str, Connector]:
-    """Instantiate every connector. `clients` lets tests inject mock HTTP."""
+def build_connectors(
+    settings, clients: dict | None = None, google_oauth=None
+) -> dict[str, Connector]:
+    """Instantiate every connector. `clients` lets tests inject mock HTTP.
+    `google_oauth` is the one Google sign-in shared by Gmail, Calendar and
+    YouTube."""
     clients = clients or {}
-    return {
-        cls.name: cls(settings, client=clients.get(cls.name))
-        for cls in ALL_CONNECTORS
-    }
+    connectors = {}
+    for cls in ALL_CONNECTORS:
+        extra = {"google_oauth": google_oauth} if issubclass(cls, GoogleConnector) else {}
+        connectors[cls.name] = cls(settings, client=clients.get(cls.name), **extra)
+    return connectors
 
 
 __all__ = [
@@ -44,6 +49,7 @@ __all__ = [
     "ConnectorError",
     "ConnectorNotConfigured",
     "PlatformAccessRequired",
+    "GoogleConnector",
     "GmailConnector",
     "CalendarConnector",
     "TwilioCallingConnector",

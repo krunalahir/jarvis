@@ -14,6 +14,8 @@ from jarvis.connectors.calling import TwilioCallingConnector
 from jarvis.connectors.google_workspace import GmailConnector
 from jarvis.schemas import Platform, PostDraft
 
+from google_fakes import FakeGoogleSignIn
+
 
 def settings(**overrides):
     base = Settings(actions_enabled=False)
@@ -31,7 +33,7 @@ def test_all_connectors_report_not_configured_by_default():
 
 
 def test_write_refused_when_actions_disabled():
-    gmail = GmailConnector(settings(google_access_token="tok"))
+    gmail = GmailConnector(settings(), google_oauth=FakeGoogleSignIn())
     assert gmail.status()["state"] == "configured_actions_disabled"
     with pytest.raises(ActionsDisabled):
         gmail.send_email("a@b.com", "hi", "body")
@@ -53,7 +55,9 @@ def test_gmail_send_builds_api_request():
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     gmail = GmailConnector(
-        settings(google_access_token="tok", actions_enabled=True), client=client
+        settings(actions_enabled=True),
+        client=client,
+        google_oauth=FakeGoogleSignIn("tok"),
     )
     result = gmail.send_email("a@b.com", "Subject", "Body")
     assert result["id"] == "msg1"
@@ -153,7 +157,10 @@ def test_gmail_search_and_calendar_list_are_reads():
         return httpx.Response(200, json={"items": [{"id": "e1", "summary": "Meet"}]})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    s = settings(google_access_token="tok")  # configured, actions disabled
-    assert GmailConnector(s, client=client).search_messages("from:bob") == [{"id": "m1"}]
-    events = CalendarConnector(s, client=client).list_events("2026-11-14T00:00:00Z")
+    s = settings()  # signed in to Google, actions disabled
+    google = FakeGoogleSignIn("tok")
+    gmail = GmailConnector(s, client=client, google_oauth=google)
+    assert gmail.search_messages("from:bob") == [{"id": "m1"}]
+    calendar = CalendarConnector(s, client=client, google_oauth=google)
+    events = calendar.list_events("2026-11-14T00:00:00Z")
     assert events[0]["summary"] == "Meet"

@@ -36,6 +36,13 @@ How you work:
   only ever requested through the request_* tools. They queue a pending
   action for the user to approve. Never claim something was sent,
   posted, published, called or played; say it was queued for approval.
+- Google apps (Gmail, Calendar, YouTube) work only after the user signs
+  in. When the user asks to sign in or connect Google, or a tool says
+  Google is not connected, call connect_google and give the user the
+  link it returns, copied exactly. Only the user can open the link and
+  press Allow; never say Google is connected unless a tool said so.
+- When you queue an email, show the user the subject and body you wrote
+  so they can check it before approving.
 - Keep answers short and direct. Cite source URLs when you used search.
 """
 

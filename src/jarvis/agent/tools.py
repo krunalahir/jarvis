@@ -5,6 +5,10 @@ Write tools NEVER execute anything: they create a PendingAction through
 the ActionGate, exactly like the HTTP endpoints do, and the user approves
 each one explicitly. The agent therefore cannot send, post, call, play or
 publish on its own, no matter what the model decides.
+
+Google sign-in also starts here: connect_google hands the user a link.
+The agent cannot sign in for the user; only the user can open the link
+and press Allow.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from ..actions import ActionGate
 from ..config import Settings
 from ..connectors.base import ConnectorError
 from ..content import ContentGenerationUnavailable, ContentGenerator
+from ..google_oauth import SIGN_IN_LINK_TTL_SECONDS
 from ..research.pipeline import ResearchPipeline
 from ..research.providers import ProviderError, exa_search_sources
 from ..scheduler import PublishScheduler
@@ -31,18 +36,41 @@ def build_tools(
     generator: ContentGenerator,
     connectors: dict,
     pending_action_ids: Optional[list] = None,
+    google_oauth=None,
+    sign_in_links: Optional[list] = None,
 ) -> list:
-    """Build the agent's tool list. `pending_action_ids`, when given,
-    collects the id of every action the agent queues, so the caller can
-    report them back to the user."""
+    """Build the agent's tool list.
+
+    `pending_action_ids`, when given, collects the id of every action the
+    agent queues, so the caller can report them back to the user.
+    `google_oauth` is the app's Google sign-in (jarvis.google_oauth).
+    `sign_in_links`, when given, collects every sign-in link handed out,
+    so the caller can show the exact link even if the model miscopies it.
+    """
 
     def _record(action) -> str:
         if pending_action_ids is not None:
             pending_action_ids.append(action.id)
+        if settings.auto_approve:
+            done = gate.approve(action.id)
+            if done.status.value == "executed":
+                return f"Done, this was executed now: {action.summary}."
+            return f"This FAILED and was not done: {action.summary}. Error: {done.error}"
         return (
             f"Queued for user approval as pending action {action.id}: "
             f"{action.summary}. Nothing has been executed; the user must "
             "approve this specific action before it happens."
+        )
+
+    def _google_note(connector_name: str) -> str:
+        """Extra line for a queued Google action when nobody is signed in."""
+        connector = connectors.get(connector_name)
+        if connector is None or connector.configured():
+            return ""
+        return (
+            " Google is not connected yet, so this would fail if approved "
+            "now. Call connect_google and give the user the sign-in link; "
+            "they should approve after signing in."
         )
 
     @tool
@@ -65,6 +93,42 @@ def build_tools(
         return "\n".join(
             f"[{i}] {s.title} - {s.url}\n{s.snippet or ''}"
             for i, s in enumerate(sources, start=1)
+        )
+
+    @tool
+    def connect_google(reconnect: bool = False) -> str:
+        """Connect the user's Google account so Gmail, Calendar and YouTube
+        work. Returns a sign-in link that the user must open; only the user
+        can press Allow. Use this when the user asks to sign in to or
+        connect Google, or when another tool says Google is not connected.
+        Set reconnect to true only if the user wants to switch account or
+        grant permissions again."""
+        if google_oauth is None:
+            return "Google sign-in is not available in this setup."
+        problem = google_oauth.problem()
+        if problem:
+            return (
+                f"Google sign-in is not set up yet: {problem} Tell the user "
+                "this; there is no link to give them."
+            )
+        status = google_oauth.status()
+        if status["connected"] and not status["missing_scopes"] and not reconnect:
+            who = f" as {status['email']}" if status.get("email") else ""
+            return f"Google is already connected{who}. No sign-in is needed."
+        try:
+            link = google_oauth.start()
+        except Exception as exc:
+            return f"Could not start Google sign-in: {exc}"
+        if sign_in_links is not None:
+            sign_in_links.append(link)
+        minutes = SIGN_IN_LINK_TTL_SECONDS // 60
+        return (
+            "Google is NOT connected yet. Give the user this link, copied "
+            "exactly, and ask them to open it in their browser, choose "
+            "their Google account and press Allow. The link works for "
+            f"{minutes} minutes. Do not use Gmail or Calendar tools again "
+            "until the user says they have finished.\n"
+            f"Sign-in link: {link}"
         )
 
     @tool
@@ -111,13 +175,15 @@ def build_tools(
         return "\n".join(
             f"{c['name']}: {c['state']}"
             + (f" (missing: {', '.join(c['missing_settings'])})" if c["missing_settings"] else "")
+            + (f" - {c['note']}" if c.get("note") else "")
             for c in (conn.status() for conn in connectors.values())
         )
 
     @tool
     def read_emails(query: str, limit: int = 5) -> str:
-        """Read-only Gmail search. Needs GOOGLE_ACCESS_TOKEN; returns message
-        ids and snippets, sends nothing."""
+        """Read-only Gmail search. Needs Google to be connected (see
+        connect_google); returns the ids of matching messages, sends
+        nothing."""
         gmail = connectors["gmail"]
         try:
             messages = gmail.search_messages(query, limit=limit)
@@ -129,8 +195,8 @@ def build_tools(
 
     @tool
     def list_calendar_events(limit: int = 5) -> str:
-        """Read-only list of upcoming calendar events. Needs
-        GOOGLE_ACCESS_TOKEN; creates nothing."""
+        """Read-only list of upcoming calendar events. Needs Google to be
+        connected (see connect_google); creates nothing."""
         calendar = connectors["google_calendar"]
         try:
             events = calendar.list_events(limit=limit)
@@ -144,14 +210,20 @@ def build_tools(
 
     @tool
     def request_send_email(to: str, subject: str, body: str) -> str:
-        """Ask to send an email. This only QUEUES a pending action for the
+        """       if "[" in body and "]" in body:
+            return (
+                "Not sent: the body still contains a placeholder in square "
+                "brackets. Ask the user for the missing name or detail, then "
+                "call this tool again with the real text."
+            )
+        Ask to send an email. This only QUEUES a pending action for the
         user to approve; it never sends by itself."""
         action = gate.request(
             ActionKind.SEND_EMAIL,
             f"Send email to {to}: '{subject}'",
             {"to": to, "subject": subject, "body": body, "cc": []},
         )
-        return _record(action)
+        return _record(action) + _google_note("gmail")
 
     @tool
     def request_create_event(summary: str, start_iso: str, end_iso: str) -> str:
@@ -162,7 +234,7 @@ def build_tools(
             f"Create calendar event '{summary}' at {start_iso}",
             {"summary": summary, "start_iso": start_iso, "end_iso": end_iso, "attendees": [], "description": ""},
         )
-        return _record(action)
+        return _record(action) + _google_note("google_calendar")
 
     @tool
     def request_phone_call(to: str, say: str) -> str:
@@ -202,6 +274,7 @@ def build_tools(
         research,
         draft_post,
         connector_status,
+        connect_google,
         read_emails,
         list_calendar_events,
         request_send_email,

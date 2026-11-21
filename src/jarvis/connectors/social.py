@@ -22,8 +22,10 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from ..google_oauth import YOUTUBE_UPLOAD
 from ..schemas import PostDraft
 from .base import Connector, PlatformAccessRequired
+from .google_workspace import GoogleConnector
 
 
 class InstagramConnector(Connector):
@@ -82,9 +84,9 @@ class XConnector(Connector):
         return response.json()
 
 
-class YouTubeConnector(Connector):
+class YouTubeConnector(GoogleConnector):
     name = "youtube"
-    required_settings = ("google_access_token",)
+    scopes = (YOUTUBE_UPLOAD,)
     api = "https://www.googleapis.com/upload/youtube/v3/videos"
 
     def publish_draft(self, draft: PostDraft, video_file_path: Optional[str] = None) -> dict:
@@ -104,17 +106,18 @@ class YouTubeConnector(Connector):
             "snippet": {"title": draft.text[:100], "description": draft.text},
             "status": status,
         }
+        headers = self._headers(YOUTUBE_UPLOAD)
         with open(video_file_path, "rb") as handle:
             response = self._client.post(
                 self.api,
                 params={"part": "snippet,status", "uploadType": "multipart"},
-                headers={"Authorization": f"Bearer {self.settings.google_access_token}"},
+                headers=headers,
                 files={
                     "metadata": ("metadata.json", json.dumps(metadata), "application/json"),
                     "video": ("video.mp4", handle, "video/mp4"),
                 },
             )
-        response.raise_for_status()
+        self._check(response)
         return response.json()
 
 

@@ -103,10 +103,11 @@ def test_every_effect_is_pending_until_approved(client):
     assert action["status"] == "pending"
     assert "a@b.com" in action["summary"]
 
-    # Approving executes; here Gmail is not configured, so it fails visibly.
+    # Approving executes; here nobody has signed in to Google, so it fails
+    # visibly and says what to do.
     decided = client.post(f"/actions/{action['id']}/approve").json()
     assert decided["status"] == "failed"
-    assert "missing settings" in decided["error"]
+    assert "Google is not connected" in decided["error"]
 
     # A decided action cannot be re-approved or rejected.
     assert client.post(f"/actions/{action['id']}/approve").status_code == 409

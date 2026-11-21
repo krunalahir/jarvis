@@ -158,4 +158,8 @@ class AgentReply(BaseModel):
     status: AgentRunStatus
     steps: list[AgentStep] = Field(default_factory=list)
     pending_action_ids: list[str] = Field(default_factory=list)
+    # Set when the agent started a Google sign-in this turn: the exact link
+    # for the user to open. It comes straight from the tool, so it does not
+    # depend on the model copying a long URL correctly.
+    google_sign_in_url: Optional[str] = None
     detail: str = ""

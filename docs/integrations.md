@@ -15,13 +15,23 @@ launch, since platform terms change.
 
 ## Google (Gmail, Calendar, YouTube)
 
-One OAuth token, env var `GOOGLE_ACCESS_TOKEN`. Scopes:
-`gmail.send`, `calendar.events`, `youtube.upload`.
+One Google sign-in covers all three. There is no access token to paste:
+ask the agent in chat to connect Google, open the link it returns and
+press Allow. JARVIS saves the sign-in in `GOOGLE_TOKEN_FILE` and renews
+the access token by itself.
+
+Env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`GOOGLE_REDIRECT_URI` (default
+`http://127.0.0.1:8000/auth/google/callback`) and `GOOGLE_TOKEN_FILE`.
+Scopes requested: `gmail.readonly`, `gmail.send`, `calendar.events`,
+`youtube.upload`, plus `openid` and `userinfo.email` to show which
+account is connected.
 
 You must create your own Google Cloud project, configure the OAuth
-consent screen and run your own OAuth flow. Apps using sensitive scopes
-need Google app verification before broad rollout. JARVIS does not and
-cannot reuse credentials from any other assistant product.
+consent screen, create an OAuth client and register the redirect URI on
+it exactly as set in `.env`. Apps using sensitive scopes need Google app
+verification before broad rollout. JARVIS does not and cannot reuse
+credentials from any other assistant product.
 
 ## Calling (Twilio)
 
@@ -45,7 +55,7 @@ permanent free tier; every publish call costs the developer account.
 
 ## YouTube
 
-Uses the Google token (`youtube.upload` scope). `videos.insert` supports
+Uses the Google sign-in (`youtube.upload` scope). `videos.insert` supports
 native scheduling: upload private with `status.publishAt` and YouTube
 releases at that time. Google's documented upload quota is 100 calls per
 day in the Video Uploads bucket.

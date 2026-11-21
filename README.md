@@ -40,8 +40,8 @@ API docs: http://localhost:8000/docs
 `POST /agent/chat` runs the LangGraph agent (LangChain 1.0 `create_agent`):
 
 1. **Plan** - the model reads your request and decides the next step.
-2. **Act** - it calls one tool: web search, research, a Gmail/Calendar
-   read, a post draft, or an action request.
+2. **Act** - it calls one tool: web search, research, a Google sign-in
+   link, a Gmail/Calendar read, a post draft, or an action request.
 3. **Observe** - the tool result goes back into the conversation.
 4. **Decide** - call another tool or answer.
 
@@ -51,6 +51,23 @@ executed by the agent: its `request_*` tools create the same pending
 actions as the HTTP endpoints, and each one still needs your explicit
 approval via `POST /actions/{id}/approve`.
 
+## Connecting Google
+
+Gmail, Calendar and YouTube share one Google sign-in, and it starts in
+chat. There is no access token to paste.
+
+1. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (from your own Google
+   Cloud OAuth client) in `.env`, and register `GOOGLE_REDIRECT_URI` on
+   that client.
+2. Ask the agent to connect Google (`POST /agent/chat`). The reply's
+   `google_sign_in_url` field holds the link to open.
+3. Open it, choose your account and press Allow. Google sends your
+   browser back to `/auth/google/callback`, which saves the sign-in in
+   `GOOGLE_TOKEN_FILE`. The access token renews itself from then on.
+
+The agent can hand you the link but cannot sign in for you. Keep the
+token file private; it is listed in `.gitignore` for that reason.
+
 ## Feature map
 
 | Feature | Status | What works today |
@@ -58,11 +75,11 @@ approval via `POST /actions/{id}/approve`.
 | Agent loop | Working, tested | LangGraph plan/tool/observe loop over the features below; bounded; writes only queue approvals. Needs the local model server running. |
 | Research & Q&A | Working, tested | Local Qwen3 writes the answer, Exa fetches fresh web sources; claims are linked to sources, unsupported ones are surfaced. Without EXA_API_KEY it reports unconfigured rather than guessing. Hosted providers (OpenAI/Perplexity) remain explicit opt-ins. |
 | Content creation | Working, tested | Topic -> post draft via the local model, per platform. Never publishes. |
-| Gmail / Google Calendar | Coded, needs Google OAuth | Read mail and list events (read-only), send mail, create events. Writes go through per-action approval. |
+| Gmail / Google Calendar | Coded, needs Google sign-in | Sign in from chat. Read mail and list events (read-only), send mail, create events. Writes go through per-action approval. |
 | Phone calls | Coded, needs Twilio | Start an outbound call via Twilio Voice. Same gating. |
 | Instagram | Coded, needs Meta app | Photo/Reel publishing containers for professional accounts. |
 | X (Twitter) | Coded, needs paid X API | Post creation. X has no permanent free tier (pay-per-use). |
-| YouTube | Coded, needs Google OAuth | Upload with native scheduling via `publishAt`. |
+| YouTube | Coded, needs Google sign-in | Upload with native scheduling via `publishAt`. |
 | Snapchat | Scaffold only | Posting is limited to Snap's partner Public Profile API. See docs. |
 | Spotify | Coded, needs Spotify app | Search and start playback on a user's device. New apps are limited to 5 allowlisted users until Spotify grants extended quota. |
 
@@ -120,6 +137,7 @@ POST /content/drafts/{id}/publish-now -> pending action
 GET  /actions                 list pending/decided actions
 POST /actions/{id}/approve    execute one specific action
 POST /actions/{id}/reject     block it
+GET  /auth/google/callback    where Google sends your browser after sign-in (never called by hand)
 ```
 
 ## Layout
@@ -128,6 +146,7 @@ POST /actions/{id}/reject     block it
 src/jarvis/
   config.py             settings from environment, credential gating
   llm.py                LangChain chat model: local Qwen3 default, OpenAI opt-in
+  google_oauth.py       Google sign-in: link, callback, token renewal
   agent/                LangGraph agent loop + tool wiring
   schemas.py            shared pydantic models
   research/             question -> research job -> sourced answer -> store

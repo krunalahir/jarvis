@@ -9,14 +9,21 @@ Security model:
   user must approve individually via POST /actions/{id}/approve.
 - Refusing to start with actions enabled but no API key is deliberate;
   JARVIS_ALLOW_INSECURE=true overrides for local-only demos.
+- Google sign-in starts in chat (the agent's connect_google tool). The
+  only sign-in route is /auth/google/callback, where Google sends the
+  user's browser afterwards. It takes no API key, because a browser
+  redirect cannot send one; a one-time `state` value protects it instead.
 """
 
 from __future__ import annotations
 
+import html
+import logging
 from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from .actions import ActionGate
@@ -24,11 +31,14 @@ from .agent import build_agent, build_tools, run_agent
 from .config import Settings
 from .connectors import build_connectors
 from .content import ContentGenerationUnavailable, ContentGenerator
+from .google_oauth import GoogleOAuth, GoogleSignInError
 from .llm import describe_llm
 from .research import ResearchPipeline, Store, provider_from_settings
 from .research.jobs import JobRunner
 from .scheduler import PublishScheduler
 from .schemas import ActionKind, Platform
+
+log = logging.getLogger(__name__)
 
 
 class AskRequest(BaseModel):
@@ -82,6 +92,18 @@ class AgentChatRequest(BaseModel):
     history: list[dict] = []
 
 
+def _sign_in_page(ok: bool, message: str, status_code: int = 200) -> HTMLResponse:
+    """The small page the user sees in the browser after Google sign-in."""
+    title = "Google is connected" if ok else "Google was not connected"
+    page = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>JARVIS - {title}</title></head>"
+        "<body style='font-family: sans-serif; max-width: 34rem; margin: 4rem auto;'>"
+        f"<h1>{title}</h1><p>{html.escape(message)}</p></body></html>"
+    )
+    return HTMLResponse(content=page, status_code=status_code)
+
+
 def create_app(
     settings: Optional[Settings] = None,
     pipeline: Optional[ResearchPipeline] = None,
@@ -89,6 +111,7 @@ def create_app(
     connectors: Optional[dict] = None,
     content_generator: Optional[ContentGenerator] = None,
     agent_builder=None,
+    google_oauth: Optional[GoogleOAuth] = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     if settings.actions_enabled and not settings.api_key and not settings.allow_insecure:
@@ -98,7 +121,11 @@ def create_app(
         )
     store = store or Store(settings.store_path)
     pipeline = pipeline or ResearchPipeline(provider_from_settings(settings), store)
-    connectors = connectors or build_connectors(settings)
+    # One Google sign-in for the whole app: the agent's connect_google tool
+    # starts it, /auth/google/callback finishes it, and the Gmail, Calendar
+    # and YouTube connectors take their access token from it.
+    google_oauth = google_oauth or GoogleOAuth(settings)
+    connectors = connectors or build_connectors(settings, google_oauth=google_oauth)
     scheduler = PublishScheduler(store, connectors)
     jobs = JobRunner(pipeline, store)
     generator = content_generator or ContentGenerator(settings)
@@ -148,6 +175,7 @@ def create_app(
         # Tools and the pending-action list are built per request, so one
         # chat turn can never see or claim another turn's queued actions.
         pending: list = []
+        sign_in_links: list = []
         tools = build_tools(
             settings,
             pipeline,
@@ -156,6 +184,8 @@ def create_app(
             generator,
             connectors,
             pending_action_ids=pending,
+            google_oauth=google_oauth,
+            sign_in_links=sign_in_links,
         )
         builder = agent_builder or (lambda tool_list: build_agent(settings, tool_list))
         reply = run_agent(
@@ -165,7 +195,48 @@ def create_app(
             history=request.history,
             pending_action_ids=pending,
         )
+        if sign_in_links:
+            # The exact link, straight from the tool. A long URL repeated by
+            # the model can come out damaged; this copy cannot.
+            reply.google_sign_in_url = sign_in_links[-1]
         return reply.model_dump(mode="json")
+
+    # --- Google sign-in ---
+    # Sign-in is started in chat, never by calling an endpoint. This is the
+    # one route it needs: after the user presses Allow, Google sends their
+    # browser here with a one-time code. Nobody calls it by hand.
+
+    @app.get("/auth/google/callback", response_class=HTMLResponse)
+    def google_auth_callback(
+        code: Optional[str] = None,
+        state: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> HTMLResponse:
+        if error or not code or not state:
+            reason = (
+                f"Google reported: {error}."
+                if error
+                else "The sign-in link came back without its code."
+            )
+            return _sign_in_page(
+                False, f"{reason} Ask JARVIS to connect Google again.", 400
+            )
+        try:
+            status = google_oauth.finish(code, state)
+        except GoogleSignInError as exc:
+            return _sign_in_page(False, str(exc), 400)
+        except Exception as exc:  # Google refused the code, network down...
+            log.warning("google sign-in failed: %s", exc)
+            return _sign_in_page(False, f"Google did not accept the sign-in: {exc}", 502)
+        who = f" as {status['email']}" if status.get("email") else ""
+        message = f"Signed in{who}. You can close this tab and go back to JARVIS."
+        if status["missing_scopes"]:
+            message += (
+                " Some permissions were left unticked, so parts of Gmail, "
+                "Calendar or YouTube will not work: "
+                + ", ".join(status["missing_scopes"])
+            )
+        return _sign_in_page(True, message)
 
     # --- research ---
 
