@@ -8,7 +8,28 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
+
+
+@lru_cache(maxsize=1)
+def _load_dotenv() -> None:
+    """Load KEY=VALUE pairs from .env without overriding real env vars."""
+    root = Path(__file__).resolve().parents[2]
+    for path in dict.fromkeys([Path.cwd() / ".env", root / ".env"]):
+        if not path.is_file():
+            continue
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+        return
 
 
 def _env(name: str) -> Optional[str]:
@@ -70,6 +91,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        _load_dotenv()
         return cls(
             actions_enabled=_flag("JARVIS_ACTIONS_ENABLED"),
             api_key=_env("JARVIS_API_KEY"),
