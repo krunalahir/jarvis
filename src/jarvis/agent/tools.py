@@ -13,6 +13,7 @@ and press Allow.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from langchain_core.tools import tool
@@ -52,6 +53,7 @@ def build_tools(
         if pending_action_ids is not None:
             pending_action_ids.append(action.id)
         if settings.auto_approve:
+            # Testing mode (JARVIS_AUTO_APPROVE=true): run it straight away.
             done = gate.approve(action.id)
             if done.status.value == "executed":
                 return f"Done, this was executed now: {action.summary}."
@@ -210,14 +212,14 @@ def build_tools(
 
     @tool
     def request_send_email(to: str, subject: str, body: str) -> str:
-        """       if "[" in body and "]" in body:
-            return (
-                "Not sent: the body still contains a placeholder in square "
-                "brackets. Ask the user for the missing name or detail, then "
-                "call this tool again with the real text."
-            )
-        Ask to send an email. This only QUEUES a pending action for the
+        """Ask to send an email. This only QUEUES a pending action for the
         user to approve; it never sends by itself."""
+        if re.search(r"\[[^\]\n]{1,40}\]", subject + "\n" + body):
+            return (
+                "Not sent: the email still contains a placeholder in square "
+                "brackets, such as [Your Name]. Ask the user for the missing "
+                "name or detail, then call this tool again with the real text."
+            )
         action = gate.request(
             ActionKind.SEND_EMAIL,
             f"Send email to {to}: '{subject}'",

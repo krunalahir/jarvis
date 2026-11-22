@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS test chat</title>
+<style>
+  :root { --line:#d9dde3; --ink:#1c2430; --soft:#5b6675; --me:#e8f0fe; --bot:#f4f5f7; --ok:#1a7f4b; --bad:#b3261e; --warn:#8a5a00; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, sans-serif; color:var(--ink); background:#fff; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; gap:.5rem; align-items:center; padding:.6rem .9rem; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:1rem; margin:0 auto 0 0; }
+  header input { width:11rem; }
+  input, textarea, button { font:inherit; border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem; }
+  button { background:#fff; cursor:pointer; }
+  button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  button:disabled { opacity:.5; cursor:default; }
+  #log { flex:1; overflow:auto; padding:1rem; display:flex; flex-direction:column; gap:.6rem; }
+  .msg { max-width:46rem; padding:.55rem .75rem; border-radius:12px; white-space:pre-wrap; word-wrap:break-word; }
+  .user { align-self:flex-end; background:var(--me); }
+  .assistant { align-self:flex-start; background:var(--bot); }
+  .note { align-self:center; color:var(--soft); font-size:.85rem; }
+  .card { align-self:flex-start; max-width:46rem; border:1px solid var(--line); border-radius:12px; padding:.6rem .75rem; }
+  .card h2 { font-size:.9rem; margin:0 0 .35rem; }
+  .card pre { margin:.35rem 0; white-space:pre-wrap; word-wrap:break-word; font:13px/1.4 ui-monospace, monospace; background:#fafafa; border-radius:8px; padding:.5rem; }
+  .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .status { font-weight:600; }
+  .executed { color:var(--ok); } .failed, .rejected { color:var(--bad); } .pending { color:var(--warn); }
+  details { align-self:flex-start; max-width:46rem; color:var(--soft); font-size:.85rem; }
+  details pre { white-space:pre-wrap; word-wrap:break-word; font:12px/1.4 ui-monospace, monospace; }
+  a.signin { display:inline-block; padding:.45rem .7rem; border-radius:8px; background:var(--ink); color:#fff; text-decoration:none; }
+  form { display:flex; gap:.5rem; padding:.7rem .9rem; border-top:1px solid var(--line); }
+  textarea { flex:1; resize:none; height:3.2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>JARVIS test chat</h1>
+  <input id="key" type="password" placeholder="API key (if set)" autocomplete="off">
+  <button id="memory" type="button">Show memory</button>
+  <button id="fresh" type="button">New chat</button>
+</header>
+<div id="log"></div>
+<form id="form">
+  <textarea id="text" placeholder="Message JARVIS. Enter to send, Shift+Enter for a new line." required></textarea>
+  <button class="primary" id="send">Send</button>
+</form>
+<script>
+const log = document.getElementById("log");
+const text = document.getElementById("text");
+const sendButton = document.getElementById("send");
+const keyBox = document.getElementById("key");
+
+function newId() {
+  return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+function readSaved() { try { return localStorage.getItem("jarvis-conversation"); } catch (e) { return null; } }
+function save(id) { try { localStorage.setItem("jarvis-conversation", id); } catch (e) {} }
+let conversationId = readSaved() || newId();
+save(conversationId);
+
+function el(tag, className, content) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (content !== undefined) node.textContent = content;   // text only, never HTML
+  return node;
+}
+function add(node) { log.appendChild(node); log.scrollTop = log.scrollHeight; return node; }
+function headers(json) {
+  const h = {};
+  if (json) h["Content-Type"] = "application/json";
+  if (keyBox.value.trim()) h["X-API-Key"] = keyBox.value.trim();
+  return h;
+}
+async function call(method, path, body) {
+  const response = await fetch(path, {
+    method, headers: headers(body !== undefined),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await response.json(); } catch (e) {}
+  if (!response.ok) {
+    const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : response.statusText;
+    throw new Error(response.status + ": " + detail);
+  }
+  return data;
+}
+
+function actionCard(action) {
+  const card = el("div", "card");
+  card.appendChild(el("h2", "", action.summary));
+  const payload = action.payload || {};
+  if (payload.body) card.appendChild(el("pre", "", payload.body));
+  else if (payload.say) card.appendChild(el("pre", "", payload.say));
+  const row = el("div", "row");
+  const status = el("span", "status " + action.status, "Status: " + action.status);
+  row.appendChild(status);
+  card.appendChild(row);
+  const problem = el("div", "failed", action.error ? "Error: " + action.error : "");
+  card.appendChild(problem);
+  if (action.status === "pending") {
+    const approve = el("button", "primary", "Approve");
+    const reject = el("button", "", "Reject");
+    row.appendChild(approve); row.appendChild(reject);
+    const decide = async (verb) => {
+      approve.disabled = reject.disabled = true;
+      try {
+        const done = await call("POST", "/actions/" + encodeURIComponent(action.id) + "/" + verb);
+        status.className = "status " + done.status;
+        status.textContent = "Status: " + done.status;
+        problem.textContent = done.error ? "Error: " + done.error : "";
+        approve.remove(); reject.remove();
+      } catch (error) {
+        problem.textContent = String(error.message);
+        approve.disabled = reject.disabled = false;
+      }
+    };
+    approve.onclick = () => decide("approve");
+    reject.onclick = () => decide("reject");
+  }
+  return card;
+}
+
+async function showActions(ids) {
+  if (!ids || !ids.length) return;
+  try {
+    const all = await call("GET", "/actions?limit=50");
+    for (const id of ids) {
+      const action = all.find((a) => a.id === id);
+      if (action) add(actionCard(action));
+    }
+  } catch (error) { add(el("div", "note", "Could not load actions: " + error.message)); }
+}
+
+async function send(message) {
+  add(el("div", "msg user", message));
+  const waiting = add(el("div", "note", "JARVIS is working…"));
+  sendButton.disabled = true;
+  try {
+    const data = await call("POST", "/agent/chat", { message, conversation_id: conversationId });
+    waiting.remove();
+    add(el("div", "msg assistant", data.reply));
+    if (data.status !== "answered") add(el("div", "note", "Run status: " + data.status + (data.detail ? " - " + data.detail : "")));
+    if (data.google_sign_in_url) {
+      const link = el("a", "signin", "Connect Google (opens a new tab)");
+      link.href = data.google_sign_in_url; link.target = "_blank"; link.rel = "noopener";
+      add(link);
+    }
+    if (data.steps && data.steps.length) {
+      const steps = el("details");
+      steps.appendChild(el("summary", "", "Steps: " + data.steps.map((s) => s.tool).join(" → ")));
+      steps.appendChild(el("pre", "", JSON.stringify(data.steps, null, 2)));
+      add(steps);
+    }
+    await showActions(data.pending_action_ids);
+  } catch (error) {
+    waiting.remove();
+    add(el("div", "note failed", "Request failed - " + error.message));
+  } finally {
+    sendButton.disabled = false; text.focus();
+  }
+}
+
+document.getElementById("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const message = text.value.trim();
+  if (!message || sendButton.disabled) return;
+  text.value = "";
+  send(message);
+});
+text.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.getElementById("form").requestSubmit(); }
+});
+document.getElementById("fresh").onclick = () => {
+  conversationId = newId(); save(conversationId);
+  log.replaceChildren();
+  add(el("div", "note", "New chat started. JARVIS remembers nothing from the old one here."));
+};
+document.getElementById("memory").onclick = async () => {
+  try {
+    const memory = await call("GET", "/conversations/" + encodeURIComponent(conversationId));
+    const card = el("div", "card");
+    card.appendChild(el("h2", "", "What JARVIS remembers about this chat"));
+    card.appendChild(el("pre", "", "Summary:\n" + (memory.summary || "(none yet)")
+      + "\n\nFacts:\n" + (memory.facts.length ? memory.facts.map((f) => "- " + f).join("\n") : "(none yet)")
+      + "\n\nRecent messages kept word for word: " + memory.turns.length));
+    add(card);
+  } catch (error) { add(el("div", "note", "No memory yet for this chat (" + error.message + ")")); }
+};
+
+(async () => {   // after a page refresh, show the remembered recent messages again
+  try {
+    const memory = await call("GET", "/conversations/" + encodeURIComponent(conversationId));
+    if (memory.summary) add(el("div", "note", "Earlier conversation is remembered as a summary."));
+    for (const turn of memory.turns) add(el("div", "msg " + turn.role, turn.content));
+  } catch (e) {}
+  text.focus();
+})();
+</script>
+</body>
+</html>

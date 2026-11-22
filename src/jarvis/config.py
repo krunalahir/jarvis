@@ -98,11 +98,15 @@ class Settings:
     # Escape hatch for running with actions enabled and no API key
     # (local-only demos). Never set this when the API is reachable by
     # anyone else.
-    # Testing only: the agent executes actions at once, with no approval step.
     allow_insecure: bool = False
-
     # Testing only: the agent executes actions at once, with no approval step.
     auto_approve: bool = False
+
+    # Conversation memory: once more than memory_max_recent messages are
+    # kept word for word, the oldest are folded into the summary and only
+    # the newest memory_min_recent stay word for word.
+    memory_max_recent: int = 15
+    memory_min_recent: int = 3
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -135,6 +139,8 @@ class Settings:
             spotify_access_token=_env("SPOTIFY_ACCESS_TOKEN"),
             allow_insecure=_flag("JARVIS_ALLOW_INSECURE"),
             auto_approve=_flag("JARVIS_AUTO_APPROVE"),
+            memory_max_recent=int(os.environ.get("JARVIS_MEMORY_MAX_RECENT", "15")),
+            memory_min_recent=int(os.environ.get("JARVIS_MEMORY_MIN_RECENT", "3")),
         )
 
     def security_warnings(self) -> list[str]:

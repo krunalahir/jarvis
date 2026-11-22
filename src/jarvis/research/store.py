@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..schemas import (
+    ConversationMemory,
     DraftStatus,
     PendingAction,
     PostDraft,
@@ -40,6 +41,11 @@ CREATE TABLE IF NOT EXISTS actions (
     kind TEXT NOT NULL,
     payload TEXT NOT NULL,
     status TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 """
 
@@ -186,3 +192,18 @@ class Store:
             (limit,),
         ).fetchall()
         return [PendingAction(**json.loads(r[0])) for r in rows]
+
+    # --- conversation memory ---
+
+    def save_conversation(self, memory: ConversationMemory) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO conversations (id, payload, updated_at) VALUES (?, ?, ?)",
+            (memory.id, memory.model_dump_json(), memory.updated_at.isoformat()),
+        )
+        self._conn.commit()
+
+    def get_conversation(self, conversation_id: str) -> Optional[ConversationMemory]:
+        row = self._conn.execute(
+            "SELECT payload FROM conversations WHERE id = ?", (conversation_id,)
+        ).fetchone()
+        return ConversationMemory(**json.loads(row[0])) if row else None

@@ -20,6 +20,7 @@ from __future__ import annotations
 import html
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -33,10 +34,11 @@ from .connectors import build_connectors
 from .content import ContentGenerationUnavailable, ContentGenerator
 from .google_oauth import GoogleOAuth, GoogleSignInError
 from .llm import describe_llm
+from .memory import MemoryManager
 from .research import ResearchPipeline, Store, provider_from_settings
 from .research.jobs import JobRunner
 from .scheduler import PublishScheduler
-from .schemas import ActionKind, Platform
+from .schemas import ActionKind, AgentRunStatus, Platform
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +90,11 @@ class PlayRequest(BaseModel):
 
 class AgentChatRequest(BaseModel):
     message: str
-    # Optional prior turns as {"role": "user"|"assistant", "content": str}.
+    # Send a conversation_id and JARVIS remembers the conversation itself
+    # (summary + recent turns + exact facts); then only the new message is
+    # needed. Without it, the old stateless behaviour applies: optional
+    # prior turns as {"role": "user"|"assistant", "content": str}.
+    conversation_id: Optional[str] = None
     history: list[dict] = []
 
 
@@ -112,6 +118,7 @@ def create_app(
     content_generator: Optional[ContentGenerator] = None,
     agent_builder=None,
     google_oauth: Optional[GoogleOAuth] = None,
+    memory: Optional[MemoryManager] = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     if settings.actions_enabled and not settings.api_key and not settings.allow_insecure:
@@ -129,6 +136,7 @@ def create_app(
     scheduler = PublishScheduler(store, connectors)
     jobs = JobRunner(pipeline, store)
     generator = content_generator or ContentGenerator(settings)
+    memory = memory or MemoryManager(store, settings)
 
     def _publish_single(draft_id: str) -> dict:
         draft = store.get_draft(draft_id)
@@ -159,6 +167,13 @@ def create_app(
         if settings.api_key and x_api_key != settings.api_key:
             raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
 
+    # The test chat page. No API key here: a browser opening a page cannot
+    # send one. The page asks for the key and sends it with every request.
+    @app.get("/", response_class=HTMLResponse)
+    def chat_page() -> HTMLResponse:
+        page = Path(__file__).parent / "web" / "chat.html"
+        return HTMLResponse(content=page.read_text(encoding="utf-8"))
+
     @app.get("/health")
     def health() -> dict:
         return {
@@ -176,6 +191,14 @@ def create_app(
         # chat turn can never see or claim another turn's queued actions.
         pending: list = []
         sign_in_links: list = []
+        state = None
+        history = request.history
+        if request.conversation_id:
+            try:
+                state = memory.load(request.conversation_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            history = memory.context_messages(state)
         tools = build_tools(
             settings,
             pipeline,
@@ -192,14 +215,37 @@ def create_app(
             builder(tools),
             request.message,
             max_steps=settings.agent_max_steps,
-            history=request.history,
+            history=history,
             pending_action_ids=pending,
         )
         if sign_in_links:
             # The exact link, straight from the tool. A long URL repeated by
             # the model can come out damaged; this copy cannot.
             reply.google_sign_in_url = sign_in_links[-1]
+        if state is not None:
+            reply.conversation_id = state.id
+            if reply.status != AgentRunStatus.FAILED:
+                remembered = reply.reply
+                if pending and not settings.auto_approve:
+                    remembered += (
+                        "\n[Queued for the user's approval, not executed yet: "
+                        + ", ".join(pending) + "]"
+                    )
+                try:
+                    memory.record(state, request.message.strip(), remembered)
+                except Exception as exc:  # never lose the reply over memory
+                    log.warning("could not save conversation memory: %s", exc)
         return reply.model_dump(mode="json")
+
+    @app.get("/conversations/{conversation_id}", dependencies=[Depends(check_api_key)])
+    def get_conversation(conversation_id: str) -> dict:
+        try:
+            state = memory.load(conversation_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if not state.turns and not state.summary:
+            raise HTTPException(status_code=404, detail="no memory for this conversation yet")
+        return state.model_dump(mode="json")
 
     # --- Google sign-in ---
     # Sign-in is started in chat, never by calling an endpoint. This is the

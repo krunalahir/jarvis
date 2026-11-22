@@ -25,7 +25,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 cp .env.example .env   # fill in what you have; everything is optional to start
 pytest                 # run the test suite (no credentials needed)
-uvicorn jarvis.api:app --host 127.0.0.1 --reload
+uvicorn jarvis.api:app --app-dir src --host 127.0.0.1 --reload
 ```
 
 To make the model live, start a local Qwen3 8B server (LM Studio, Ollama,
@@ -164,3 +164,25 @@ docs/integrations.md    per-platform setup, scopes and limits
 The original feature list mentioned "snaptrack" and "putube". These are
 treated as Snapchat and YouTube throughout, but that reading was never
 confirmed - rename or drop the Snapchat scaffold if wrong.
+
+## Test chat page and conversation memory
+
+Start the server and open http://127.0.0.1:8000/ for a simple chat page
+wired to `POST /agent/chat`. It shows the reply, the tools used, the Google
+sign-in link, and Approve / Reject buttons for queued actions.
+
+Memory: send `conversation_id` with each message and JARVIS remembers the
+conversation itself, in three parts:
+
+| Part | What it holds | When it changes |
+|---|---|---|
+| Summary | The gist of the older conversation | Only when the recent turns pass the limit |
+| Recent turns | The last 3 to 15 messages, word for word | Every message |
+| Facts | Emails, phone numbers, dates, "my name is ..." | When the user states one |
+
+`GET /conversations/{id}` shows what is remembered. Limits:
+`JARVIS_MEMORY_MAX_RECENT` (15) and `JARVIS_MEMORY_MIN_RECENT` (3).
+Without `conversation_id` the endpoint works as before (optional `history`).
+
+Testing only: `JARVIS_AUTO_APPROVE=true` makes the agent run actions at
+once, with no approval step.

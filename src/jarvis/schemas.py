@@ -163,3 +163,20 @@ class AgentReply(BaseModel):
     # depend on the model copying a long URL correctly.
     google_sign_in_url: Optional[str] = None
     detail: str = ""
+    # Echoed back when the request used server-side memory.
+    conversation_id: Optional[str] = None
+
+
+class ConversationMemory(BaseModel):
+    """What the server remembers about one conversation.
+
+    summary: gist of the older part, rewritten only past the turn limit.
+    facts:   exact details the user stated, copied character for character.
+    turns:   the most recent messages, word for word.
+    """
+
+    id: str
+    summary: str = ""
+    facts: list[str] = Field(default_factory=list)
+    turns: list[dict] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=utcnow)
